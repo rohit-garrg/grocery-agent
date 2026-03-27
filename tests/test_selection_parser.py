@@ -78,6 +78,10 @@ class TestParseSelection:
         with pytest.raises(ValueError, match="Quantity must be positive"):
             parse_selection("1x0", VALID_IDS)
 
+    def test_negative_quantity(self):
+        with pytest.raises(ValueError):
+            parse_selection("1x-1", VALID_IDS)
+
     def test_valid_ids_as_list(self):
         result = parse_selection("1,2", [1, 2, 3])
         assert result == [
