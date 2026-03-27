@@ -6,7 +6,7 @@ Reference: `spec.md` for full requirements.
 
 ## Phase 0: Project bootstrap (must complete before any other phase)
 
-- [ ] **P0: Project scaffolding and tooling.** Create directory structure per spec (`src/`, `tests/`, `logs/`, `price_history/`, `browser_profile/`). Create `.env.example` with all required env vars documented (TELEGRAM_TOKEN, ALLOWED_USER_ID, BROWSER_PROFILE_PATH, PINCODE). Create `.gitignore` (exclude `.env`, `browser_profile/`, `logs/`, `price_history/`, `node_modules/`, `__pycache__/`, `*.pyc`, `.pytest_cache/`, `ralph.log`). Create `requirements.txt` with **pinned** versions:
+- [x] **P0: Project scaffolding and tooling.** Create directory structure per spec (`src/`, `tests/`, `logs/`, `price_history/`, `browser_profile/`). Create `.env.example` with all required env vars documented (TELEGRAM_TOKEN, ALLOWED_USER_ID, BROWSER_PROFILE_PATH, PINCODE). Create `.gitignore` (exclude `.env`, `browser_profile/`, `logs/`, `price_history/`, `node_modules/`, `__pycache__/`, `*.pyc`, `.pytest_cache/`, `ralph.log`). Create `requirements.txt` with **pinned** versions:
   ```
   python-telegram-bot==20.7
   playwright==1.41.0
