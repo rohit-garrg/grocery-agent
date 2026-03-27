@@ -29,7 +29,8 @@ The agent runs via `claude -p` (Claude Code headless mode) on a Max plan. **Brow
 ### Blinkit (blinkit.com)
 
 - User does NOT have Blinkit Plus.
-- Delivery fees and handling charges vary by order value. The scraper reads the current fee thresholds from the **delivery info widget or banner** visible on the search/category page (e.g., "Free delivery above ₹199" or "₹25 delivery fee"). These thresholds can also be read from a lightweight cart check: after collecting all prices, add the cheapest item available temporarily, read the fee breakdown from the cart summary, then navigate away without completing any order.
+- Delivery fees and handling charges vary by order value. The scraper reads the current fee thresholds from the **delivery info widget or banner** visible on the search/category page (e.g., "Free delivery above ₹199" or "₹25 delivery fee").
+- As a fallback (only if no fee info is visible on the search/category page), navigate to the empty cart page and read any fee structure text displayed there. Do NOT add items to the cart for fee discovery. If no fee info is found on either the search page or the empty cart page, use defaults: ₹25 delivery, ₹9 handling, free delivery above ₹199, no cashback.
 - Location must be set to pincode 122001. Blinkit typically prompts for location on first visit or when location isn't set.
 - May show app-install prompts or location modals that need dismissing before searching.
 
@@ -63,7 +64,7 @@ Fields:
 - `id`: Auto-incrementing integer based on max existing id. Never reused after deletion.
 - `name`: Display name shown to user in Telegram.
 - `query`: Search string used on each platform. May differ from display name for better search results. Editable directly in the JSON file.
-- `brand`: Optional. If set, the scraper only considers results matching this brand (case-insensitive substring match). If null, the scraper picks the cheapest result that matches the item description and quantity.
+- `brand`: Optional. If set, the match function only considers candidates whose `brand` field contains this string (case-insensitive substring match). If null, the match function picks the cheapest result that meets the relevance threshold.
 - `category`: For display grouping only (dairy, pulses, grains, snacks, etc.). Does not affect pricing logic.
 
 **Adding items via Telegram:** `/add Amul Butter 500g`. The agent creates a new entry with next available id, sets both `name` and `query` to the full text after `/add`, sets `brand` to null, and `category` to "uncategorized." The user can edit `master_list.json` directly to tune the `query` string or set a `brand`. The agent confirms: "Added #42: Amul Butter 500g. You can edit master_list.json to set brand or tune the search query."
@@ -98,7 +99,7 @@ Example: 1x2,4,5,8,12
 4. `telegram_bot.py` validates the selection via `selection_parser.py`. If invalid, sends error and asks to re-enter. If valid, sends "Got it. Fetching prices for N items... (this takes 2-5 minutes)."
 5. `telegram_bot.py` calls `agent.sh` with the validated selection string as an argument.
 6. `agent.sh` invokes `claude -p` with the agent system prompt and selection.
-7. Claude Code runs `python src/orchestrator.py "1x2,4,5,8,12"` via bash.
+7. Claude Code runs `python3 src/orchestrator.py "1x2,4,5,8,12"` via bash.
 8. `orchestrator.py` runs the full pipeline (see below), writes the formatted output to stdout.
 9. Claude Code captures the output and returns it.
 10. `agent.sh` captures Claude's output and returns it to `telegram_bot.py`.
@@ -137,10 +138,10 @@ Example: 1x2,4,5,8,12
 
 **This is a Python heuristic, not LLM judgment.** The `find_best_match()` function in `src/match_utils.py` (shared by both scrapers) implements the following rules:
 
-1. Extract key tokens from the `query` field (nouns and numbers: "toor", "dal", "1", "kg").
-2. Score each candidate result by how many query tokens appear in the product name (case-insensitive).
-3. If `brand` is set, filter to results where the brand name is a substring of the product name. If no results survive this filter, return `None` (item unavailable with that brand).
-4. From remaining results, return the cheapest one with a relevance score above a minimum threshold (at least 50% of query tokens matched).
+1. Normalize the `query` string: collapse whitespace, strip punctuation, lowercase. Then tokenize by splitting on spaces. Additionally, normalize common unit patterns: join any digit token followed by a unit token into a single token (e.g., tokens ["1", "kg"] also produce "1kg"; tokens ["500", "g"] also produce "500g"). This gives a combined token set for matching.
+2. For each candidate, normalize its `name` field the same way. Score by counting how many query tokens (including the joined unit tokens) appear in the candidate's normalized token set.
+3. If `brand` is set in the master list item, filter to candidates where `brand.lower()` is a substring of `candidate["brand"].lower()`. If no candidates pass this filter, return `None` (item unavailable with that brand constraint).
+4. From remaining candidates, return the cheapest one with a relevance score above a minimum threshold (at least 50% of the original query tokens matched — count against the pre-join token count, not the expanded set).
 5. If no results exceed the threshold, return `None`.
 
 A future version could replace this with an LLM call for ambiguous cases. That is explicitly out of scope for v1.
@@ -149,27 +150,33 @@ A future version could replace this with an LLM call for ambiguous cases. That i
 
 The optimizer takes as input:
 - List of selected items with prices per platform (some may be None/"unavailable") and requested quantities
-- Delivery fee structure per platform (fee amount, free delivery threshold, handling charge)
+- Fee structure per platform: `{"delivery_fee": float, "handling_fee": float, "free_delivery_threshold": float | None, "cashback_tiers": [{"min_order": float, "cashback": float}]}`. All platforms use the same fee structure schema. Amazon's `handling_fee` is 0.
 - Visible cashback tiers per platform (list of `{min_order, cashback}` dicts; may be empty)
 
-The optimizer outputs a dict with: per-platform item assignments, subtotals, fees, cashback applied, platform totals, combined total, single-platform totals (for comparison), and savings vs best single-platform option.
+The optimizer outputs a dict with: per-platform item assignments, subtotals, fees (delivery and handling per platform), cashback applied, platform totals, combined total, single-platform totals (for comparison), and savings vs best single-platform option.
 
 ### Rules
 
 1. Items only available on one platform are pre-assigned. No choice to make.
-2. For items available on both platforms, brute-force all 2^N assignments (where N = number of dual-platform items). For each combination, compute per-platform subtotals (unit price × quantity), apply fee rules (fee waived if subtotal >= threshold), apply best cashback tier, compute total. Pick the combination with the lowest combined total.
+2. For items available on both platforms, brute-force all 2^N assignments (where N = number of dual-platform items). For each combination, compute per-platform subtotals (unit price × quantity), apply fee rules (delivery fee waived if subtotal >= free_delivery_threshold; handling fee always applies), apply best cashback tier (highest cashback where min_order <= subtotal), compute total. Pick the combination with the lowest combined total.
 3. Brute force is feasible for up to 20 dual-platform items (2^20 ≈ 1M combinations runs in under 1 second). If N > 20, log a warning and use greedy: assign each dual-platform item to its cheapest platform, then evaluate whether consolidating onto one platform would cross a fee threshold and save money.
-4. If delivery fees can't be determined for a platform, assume worst-case defaults: Amazon ₹40 delivery, Blinkit ₹25 delivery + ₹9 handling, no cashback.
+4. If delivery fees can't be determined for a platform, assume worst-case defaults: Amazon ₹40 delivery + ₹0 handling, Blinkit ₹25 delivery + ₹9 handling, no cashback.
 
 ### Edge cases
 
 - All items cheaper on one platform: recommend single-platform order. Still show the comparison.
-- Very small order (1-2 items): if total delivery fees exceed 20% of item cost, flag this in the output.
+- Very small order (1-2 items): if total delivery + handling fees exceed 20% of item cost, flag this in the output.
 - Platform unavailable: optimize across available platforms only. Note the unavailable platform in output.
 
 ## Output Format
 
-Telegram messages, split into two parts if the total exceeds 4096 characters. **Split ONLY between the comparison table section and the recommendation section — never mid-table or mid-block.** Send the comparison table first, then the recommendation + totals as a second message.
+Telegram messages, split if the total exceeds 4096 characters.
+
+**Splitting rules (in priority order):**
+1. If total output fits in 4096 characters, send as one message.
+2. Split at the `\n✅ RECOMMENDED SPLIT:\n` boundary: comparison table as message 1, recommendation + totals as message 2.
+3. If the comparison table alone exceeds 4096 characters (large item count), split the table across messages at row boundaries (between `├──...` separator lines). Never split mid-row.
+4. If a single row exceeds 4096 characters (should not happen in practice), truncate the item name.
 
 ```
 📊 Price Comparison Results
@@ -228,12 +235,14 @@ grocery-agent/
 ├── .env                          # TELEGRAM_TOKEN, ALLOWED_USER_ID, BROWSER_PROFILE_PATH, PINCODE
 ├── .gitignore
 ├── .claude/
-│   └── settings.json             # Claude Code tool permissions
+│   └── settings.json             # Claude Code tool permissions (headless + interactive)
 ├── CLAUDE.md                     # Project conventions (auto-read by Claude Code)
 ├── spec.md                       # This file
 ├── IMPLEMENTATION_PLAN.md        # Ralph loop task checklist
-├── PROMPT.md                     # Ralph loop per-iteration prompt
-├── ralph.sh                      # Ralph loop orchestrator
+├── PROMPT.md                     # Ralph loop per-iteration implementation prompt
+├── REVIEW_PROMPT.md              # Ralph loop per-iteration adversarial review prompt
+├── ralph.sh                      # Ralph loop orchestrator (two-pass: implement + review)
+├── SETUP.md                      # First-time setup guide (browser login, MCP verification)
 ├── requirements.txt              # Pinned Python dependencies
 ├── master_list.json              # Grocery item master list
 ├── src/
@@ -275,8 +284,8 @@ PINCODE=122001          # Delivery pincode
 ## Security
 
 - `ALLOWED_USER_ID` is validated in `telegram_bot.py` BEFORE any message reaches `agent.sh` or `claude -p`. Hard gate, not a prompt instruction.
-- `.env`, `browser_profile/`, `logs/`, `price_history/` are gitignored.
-- Agent's bash access is scoped to `--allowedTools Bash,Read` (verify exact flag name against Claude Code docs; the intent is to allow bash execution and file reads only).
+- `.env`, `browser_profile/`, `logs/`, `price_history/`, `ralph.log` are gitignored.
+- Agent's bash access is scoped via `--allowedTools "Bash" "Read"` in `agent.sh` (headless mode requires explicit tool permissions; no interactive prompts).
 - Telegram messages from the user are passed to `agent.sh` as shell-quoted arguments. Never interpolated unquoted.
 - Item selection validated against regex `^\d+(x\d+)?(,\d+(x\d+)?)*$` in `telegram_bot.py` before being passed to `agent.sh`.
 - No credentials stored in code. All secrets in `.env` loaded via `python-dotenv`.
@@ -318,7 +327,7 @@ For unavailable items: `price` is `null`, `brand` is `null`, `status` field is s
 - No Zepto or Flipkart Minutes support (Phase 2).
 - No Playwright MCP — Python Playwright library only.
 - No card-specific discount optimization.
-- No automated checkout or cart addition.
+- No automated checkout or cart addition. (Navigating to an empty cart page to read fee banners is allowed; adding items to cart is not.)
 - No price alerts ("tell me when X drops below ₹Y").
 - No multi-address support. Single address: pincode 122001.
 - No scheduled/cron comparisons. On-demand via Telegram only.

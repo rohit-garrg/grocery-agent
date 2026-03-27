@@ -13,7 +13,7 @@ The working directory is the project root (the directory containing this PROMPT.
 Pick the **highest-priority unchecked task** (first `- [ ]` item in IMPLEMENTATION_PLAN.md).
 
 Before writing any code:
-- Check what source files already exist in `src/` that are relevant to this task. Read only those files — not the entire directory. On early iterations, `src/` may be empty; that is expected.
+- If `src/` exists, check what source files are relevant to this task. Read only those files — not the entire directory. On early iterations (especially P0), `src/` may not exist yet; that is expected — skip this step.
 - If the task depends on functions defined in other modules (e.g., the optimizer uses data structures from the scrapers), read those modules too.
 - Verify the task's requirements against `spec.md`. If there is any ambiguity, the spec takes precedence over the task description.
 
@@ -25,9 +25,37 @@ Before writing any code:
 - For integration tests (those marked `@pytest.mark.integration`): implement the test but do not run it — it requires a live browser profile. Leave a comment in the test: `# Integration test: requires browser profile with [platform] login`.
 - For all other tests: run them, and they must pass.
 
+## Special task types
+
+### SIMPLIFY tasks
+
+If the current task ID contains "SIMPLIFY", this is a code health pass, not a feature task.
+
+1. Read all source files created in the phase being simplified.
+2. Look for: dead code, unnecessary abstractions, duplicated logic, overly complex functions that could be split, inconsistent naming, missing or misleading comments, unnecessary imports.
+3. Simplify without changing behavior. Do not add features. Do not refactor for the sake of refactoring. Only act on things that are genuinely messy or will cause problems later.
+4. Run ALL tests (unit and any non-integration) before and after changes. The test suite must remain green.
+5. If no simplification is needed, that is a valid outcome. Mark the task done and move on.
+
+### SYNC-DOCS tasks
+
+If the current task ID contains "SYNC-DOCS", this is a documentation sync pass.
+
+1. Read `spec.md`, `CLAUDE.md`, `IMPLEMENTATION_PLAN.md`, and all source files in `src/`.
+2. Check for drift between the docs and the actual code:
+   - Does the directory structure in spec.md match reality?
+   - Do function signatures in CLAUDE.md match the actual implementations?
+   - Are there conventions in CLAUDE.md that the code violates?
+   - Are there patterns in the code that should be documented in CLAUDE.md but aren't?
+   - Does the "Learned conventions" section of CLAUDE.md reflect all quirks discovered so far?
+3. Update the docs to match reality. Code is the source of truth — update docs to match code, not the other way around.
+4. Do NOT change any code in this task. Only change `.md` files.
+
 ## Test and commit flow
 
-Run tests with: `python -m pytest tests/ -v -m "not integration"`
+First, ensure dependencies are installed. Run: `pip3 install -r requirements.txt --break-system-packages -q 2>/dev/null || true`
+
+Run tests with: `python3 -m pytest tests/ -v -m "not integration"`
 
 If tests pass:
 1. Stage only the files you created or modified in this task. Do not use `git add -A` blindly — verify with `git status` that you are not staging unintended files (logs, browser profiles, `.env`).
@@ -44,7 +72,9 @@ If tests fail:
 
 ## Dependencies
 
-If `requirements.txt` dependencies are not yet installed, run:
+If the P0 scaffolding task has not been completed yet (no `requirements.txt` or no `src/` directory), the current task is likely P0 itself — follow its instructions to create these files.
+
+If `requirements.txt` exists and dependencies are not yet installed, run:
 `pip install -r requirements.txt --break-system-packages`
 
 If `playwright install chromium` has not been run, run it before any Playwright-related task.

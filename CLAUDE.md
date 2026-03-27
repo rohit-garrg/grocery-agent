@@ -13,7 +13,7 @@ Task checklist: `IMPLEMENTATION_PLAN.md`
 telegram_bot.py (long-running async process)
   └── agent.sh (shell bridge, invoked via subprocess)
         └── claude -p (orchestrator — reads agent_prompt.md)
-              └── python src/orchestrator.py (main pipeline)
+              └── python3 src/orchestrator.py (main pipeline)
                     ├── scraper_amazon.py     (Playwright, sync)
                     ├── scraper_blinkit.py    (Playwright, sync)
                     ├── match_utils.py        (heuristic matching)
@@ -32,7 +32,7 @@ grocery-agent/
 │   ├── telegram_bot.py           # Telegram polling + command routing (async, python-telegram-bot v20)
 │   ├── agent.sh                  # Bridges Telegram to claude -p (includes lockfile)
 │   ├── agent_prompt.md           # System prompt for claude -p agent
-│   ├── orchestrator.py           # Pipeline coordinator (run as: python src/orchestrator.py "1x2,4")
+│   ├── orchestrator.py           # Pipeline coordinator (run as: python3 src/orchestrator.py "1x2,4")
 │   ├── scraper_amazon.py         # Amazon price scraping via Playwright (sync)
 │   ├── scraper_blinkit.py        # Blinkit price scraping via Playwright (sync)
 │   ├── browser_manager.py        # Playwright persistent context lifecycle
@@ -46,8 +46,42 @@ grocery-agent/
 │   ├── conftest.py               # Registers pytest markers (integration)
 │   └── test_*.py                 # One test file per source module
 ├── master_list.json              # Item master list (source of truth)
-└── .claude/settings.json        # Claude Code tool permissions (Bash, Read, Write)
+├── .claude/settings.json         # Claude Code tool permissions
+├── PROMPT.md                     # Ralph loop implementation prompt
+├── REVIEW_PROMPT.md              # Ralph loop adversarial review prompt
+├── ralph.sh                      # Ralph loop orchestrator (two-pass: implement + review)
+├── spec.md                       # Product spec
+├── IMPLEMENTATION_PLAN.md        # Task checklist
+└── SETUP.md                      # First-time setup and browser login guide
 ```
+
+## Build Process: Ralph Wiggum Loop
+
+This project is built using the Ralph Wiggum loop: autonomous iterative execution with fresh context per task.
+
+**Two-pass iteration:** Each iteration has an implementation pass (PROMPT.md) followed by an adversarial review pass (REVIEW_PROMPT.md). The review pass uses Gemini via MCP for a second opinion. See ralph.sh for the full loop logic.
+
+**Periodic maintenance tasks:** SIMPLIFY and SYNC-DOCS tasks appear at phase boundaries in IMPLEMENTATION_PLAN.md. These are treated as regular tasks (one per iteration) and follow the rules in PROMPT.md.
+
+**Pre-flight (run once before starting the loop):**
+1. Run `claude-code-setup` interactively to scaffold hooks, MCPs, and agents
+2. Run `setup_browser.sh` to log into Amazon and Blinkit in the persistent browser profile
+3. Verify MCP tools are available: `claude mcp list` should show Gemini and Context7
+4. Run `./ralph.sh 25` to start the loop
+
+## MCP Tools and Subagents (development-time only)
+
+These are used during the Ralph loop build process. They are NOT used at runtime by the grocery agent itself.
+
+**Gemini** (`npx gemini-mcp-tool`): Primary second-opinion tool in REVIEW_PROMPT.md via the `ask-gemini` tool. Authenticated via Gemini CLI with a Pro subscription. Available tools: `mcp__gemini__ask-gemini` (main tool for review), `mcp__gemini__brainstorm`, `mcp__gemini__fetch-chunk`, `mcp__gemini__Help`, `mcp__gemini__ping`, `mcp__gemini__timeout-test`. Pro tier rate limits apply (significantly higher than free tier).
+
+**Task subagent** (built-in Claude Code tool): Fallback when Gemini rate-limits or errors. The review pass spawns a subagent via the `Task` tool with an adversarial review prompt. Runs on the same model as the review pass (Sonnet 4.6 by default, configured via `REVIEW_MODEL` in ralph.sh).
+
+**Context7** (`npx @upstash/context7-mcp`): Used for looking up current library documentation during implementation. Helpful for python-telegram-bot v20 API, Playwright API, etc.
+
+**Review pass model:** The review pass runs on Sonnet 4.6 (`--model claude-sonnet-4-6` in ralph.sh) regardless of what model the implementation pass uses. This gives a different perspective and is cheaper/faster. Configurable via `REVIEW_MODEL` in ralph.sh.
+
+These MCP servers are configured at user scope (`~/.claude.json` or via `claude mcp add -s user`) and are available automatically in both interactive and headless (`claude -p`) mode.
 
 ## Language, Dependencies, and Setup
 
@@ -63,7 +97,7 @@ grocery-agent/
 
 **File organization:** All source in `src/`. All tests in `tests/`. Test files mirror source: `src/optimizer.py` → `tests/test_optimizer.py`.
 
-**Testing:** Use pytest. Run with: `python -m pytest tests/ -v -m "not integration"` to skip integration tests. Integration tests (requiring a live browser) are marked `@pytest.mark.integration` and will not run in CI.
+**Testing:** Use pytest. Run with: `python3 -m pytest tests/ -v -m "not integration"` to skip integration tests. Integration tests (requiring a live browser) are marked `@pytest.mark.integration` and will not run in CI.
 
 **Functions return dicts, not custom classes.** Keep data structures simple and JSON-serializable.
 
@@ -80,19 +114,52 @@ grocery-agent/
 
 **Environment variables:** Load from `.env` via `python-dotenv`. Call `load_dotenv()` at module level. Never hardcode credentials. Never print env vars to stdout.
 
+**Commit messages:** Use format `Complete [TASK_ID]: [brief description]` for implementation commits. Use `Review fix: [brief description]` for changes made during the review pass. Use `Simplify: [what changed]` for simplify tasks. Use `Sync docs: [what changed]` for doc sync tasks.
+
 ## Key Design Decisions
 
-**Search-based matching, not URL mapping.** Master list items have a `query` field used to search platforms. Matching is done by `match_utils.find_best_match()` — a keyword heuristic. No LLM judgment is involved in v1 matching.
+**Search-based matching, not URL mapping.** Master list items have a `query` field used to search platforms. Matching is done by `match_utils.find_best_match()` — a keyword heuristic with unit normalization (e.g., "1 kg" matches "1kg"). No LLM judgment is involved in v1 matching.
 
-**Dynamic fee discovery — from the page, not from the cart.** Amazon fees are read from delivery badges on the product listing page. Blinkit fees are read from page banners or a lightweight cart page check. Never add items to the cart as part of fee discovery. Never hardcode fee structures.
+**Brand matching uses the candidate's `brand` field, not the product name.** When `brand_constraint` is set, the filter checks `brand_constraint.lower() in candidate["brand"].lower()`. This is a substring match against the brand field specifically, not the product name.
+
+**Dynamic fee discovery — from the page, not from the cart.** Amazon fees are read from delivery badges on the product listing page. Blinkit fees are read from page banners. As a fallback for Blinkit, the scraper navigates to the empty cart page to read fee text — but never adds items to the cart. Never hardcode fee structures.
+
+**Symmetric fee structure across platforms.** Both Amazon and Blinkit use the same fee dict schema: `{"delivery_fee", "handling_fee", "free_delivery_threshold", "cashback_tiers"}`. Amazon's `handling_fee` is 0. This keeps the optimizer and formatter generic.
 
 **Persistent browser sessions.** The agent reuses a Playwright browser profile stored at `BROWSER_PROFILE_PATH`. It never handles login credentials or attempts to log in. On session expiry, it alerts the user.
 
 **Brute-force optimization with greedy fallback.** For N <= 20 dual-platform items, brute-force 2^N combinations. For N > 20, log a warning and use greedy: assign each item to its cheaper platform, then evaluate one-platform consolidation for fee threshold effects.
 
-**Telegram message splitting at section boundaries only.** Never split mid-table. The split point is always between the comparison table section and the recommendation section.
+**Telegram message splitting with multi-level fallback.** Primary split point: between comparison table and recommendation section. If the table itself exceeds 4096 chars (large item count), split at row boundaries. Never split mid-row.
 
 **No --resume flag.** `claude -p` is invoked fresh for each comparison run. No session persistence across runs.
+
+## Permissions (headless mode)
+
+Claude Code in headless mode (`claude -p`) requires explicit tool permissions. These are provided in two ways:
+
+1. **`.claude/settings.json`** (for interactive sessions):
+   ```json
+   {
+     "permissions": {
+       "allow": [
+         "Bash(*)",
+         "Read(*)",
+         "Write(*)",
+         "Edit(*)",
+         "MultiEdit(*)"
+       ],
+       "deny": []
+     }
+   }
+   ```
+
+2. **`--allowedTools` flag** (for headless mode in ralph.sh and agent.sh):
+   ```
+   --allowedTools "Bash" "Read" "Write" "Edit" "MultiEdit"
+   ```
+
+Both are required. The settings.json covers interactive use. The `--allowedTools` flag covers `claude -p` invocations.
 
 ## Common Pitfalls
 
@@ -100,9 +167,11 @@ grocery-agent/
 - Blinkit shows a location modal and an app-install banner on most page loads. `dismiss_modals()` must be called before any search interaction.
 - Amazon shows different prices for Prime vs non-Prime. The agent must run within a logged-in Prime session. If prices look wrong, check that the session is valid.
 - `python-telegram-bot` v20 is fully async. All handlers must be `async def`. Do not mix sync and async patterns in `telegram_bot.py`.
-- Telegram messages have a 4096 character limit. Always call `formatter.split_message()` before sending. Do not assume the output will be short.
+- Telegram messages have a 4096 character limit. Always call `formatter.split_message()` before sending. Do not assume the output will be short. With 15+ items, the comparison table alone can exceed 4096 chars.
 - Master list IDs are never reused after deletion. Always compute next id as `max(existing_ids) + 1`, not `len(list) + 1`.
 - `playwright install chromium` must be run after every fresh `pip install playwright`. The package alone does not include the browser binary.
+- On macOS, use `gtimeout` instead of `timeout`. ralph.sh auto-detects this, but agent.sh may need manual adjustment.
+- The match_utils `find_best_match()` includes unit normalization: "1 kg" and "1kg" are treated as equivalent during token matching. Both forms are generated and checked.
 
 ## Learned Conventions
 

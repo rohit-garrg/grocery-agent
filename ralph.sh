@@ -2,10 +2,14 @@
 
 # Ralph Wiggum Loop — Grocery Price Comparison Agent
 # Each iteration: fresh Claude Code instance, one task, commit, exit.
+# Two-pass per iteration: implement, then adversarial review (with Gemini via MCP).
 # Progress tracked via IMPLEMENTATION_PLAN.md checkboxes and git history.
 #
 # Usage: ./ralph.sh <max_iterations>
 # Example: ./ralph.sh 25
+#
+# Pre-flight: run claude-code-setup interactively before first use.
+# See SETUP.md for one-time browser login and project bootstrapping.
 
 set -euo pipefail
 
@@ -28,14 +32,45 @@ if ! command -v git >/dev/null 2>&1; then
   exit 1
 fi
 
+# timeout command: GNU coreutils ships 'timeout' on Linux, 'gtimeout' on macOS via Homebrew
+if command -v timeout >/dev/null 2>&1; then
+  TIMEOUT_CMD="timeout"
+elif command -v gtimeout >/dev/null 2>&1; then
+  TIMEOUT_CMD="gtimeout"
+else
+  echo "Error: neither 'timeout' nor 'gtimeout' found."
+  echo "On macOS: brew install coreutils"
+  exit 1
+fi
+
 # ─── Configuration ────────────────────────────────────────────────────────────
 
 MAX_ITERATIONS=$1
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG_FILE="$PROJECT_DIR/ralph.log"
-TIMEOUT_SECONDS=900  # 15 minutes per iteration max
+TIMEOUT_SECONDS=900   # 15 minutes per implementation pass
+REVIEW_TIMEOUT=600    # 10 minutes per review pass
+
+# Review pass runs on Sonnet (faster, cheaper, different perspective from implementation model)
+REVIEW_MODEL="claude-sonnet-4-6"
 
 cd "$PROJECT_DIR"
+
+# ─── Required file checks ────────────────────────────────────────────────────
+
+for required_file in PROMPT.md REVIEW_PROMPT.md IMPLEMENTATION_PLAN.md; do
+  if [ ! -f "$required_file" ]; then
+    echo "Error: $required_file not found in $PROJECT_DIR."
+    echo "The Ralph loop requires PROMPT.md, REVIEW_PROMPT.md, and IMPLEMENTATION_PLAN.md."
+    exit 1
+  fi
+done
+
+# Sanity check: at least one unchecked task exists
+if ! grep -qE '^\- \[ \]' IMPLEMENTATION_PLAN.md; then
+  echo "No unchecked tasks found in IMPLEMENTATION_PLAN.md. Nothing to do."
+  exit 0
+fi
 
 # ─── Git initialization ───────────────────────────────────────────────────────
 
@@ -82,25 +117,24 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
   echo "=========================================" | tee -a "$LOG_FILE"
   echo "" | tee -a "$LOG_FILE"
 
-  # Run Claude Code with a per-iteration timeout.
-  # stdout is captured; stderr is shown live for debugging.
-  # || true: we handle failures explicitly below via result inspection.
-  result=$(timeout "$TIMEOUT_SECONDS" claude -p "$(cat PROMPT.md)" \
+  # ── Pass 1: Implementation ──────────────────────────────────────────────
+
+  result=$($TIMEOUT_CMD "$TIMEOUT_SECONDS" claude -p "$(cat PROMPT.md)" \
+    --allowedTools "Bash" "Read" "Write" "Edit" "MultiEdit" \
     --output-format text 2>&1) || {
     exit_code=$?
     if [ $exit_code -eq 124 ]; then
-      echo "ERROR: claude -p timed out after ${TIMEOUT_SECONDS}s on iteration $i." | tee -a "$LOG_FILE"
-      echo "This may indicate a hung browser or network issue." | tee -a "$LOG_FILE"
+      echo "ERROR: Implementation pass timed out after ${TIMEOUT_SECONDS}s on iteration $i." | tee -a "$LOG_FILE"
       echo "Stopping loop. Review logs and restart if appropriate." | tee -a "$LOG_FILE"
       exit 1
     fi
-    echo "WARNING: claude -p exited with code $exit_code on iteration $i." | tee -a "$LOG_FILE"
+    echo "WARNING: Implementation pass exited with code $exit_code on iteration $i." | tee -a "$LOG_FILE"
     result=""
   }
 
   echo "$result" | tee -a "$LOG_FILE"
   echo "" | tee -a "$LOG_FILE"
-  echo "=== Finished: $(date) ===" | tee -a "$LOG_FILE"
+  echo "=== Implementation pass finished: $(date) ===" | tee -a "$LOG_FILE"
 
   # Check for completion signal
   if echo "$result" | grep -q "<promise>COMPLETE</promise>"; then
@@ -111,7 +145,7 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
     exit 0
   fi
 
-  # Check for failed tasks (anchored to line start to avoid false matches)
+  # Check for failed tasks
   if grep -qE '^\- \[!\]' IMPLEMENTATION_PLAN.md; then
     echo "" | tee -a "$LOG_FILE"
     echo "WARNING: A task was marked as failed [!] in IMPLEMENTATION_PLAN.md." | tee -a "$LOG_FILE"
@@ -120,14 +154,44 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
     exit 1
   fi
 
-  # Detect rate limiting and pause before next iteration
+  # ── Pass 2: Adversarial review (Claude + Gemini via MCP) ────────────────
+  # Skip review for scaffolding tasks (P0) and if implementation produced no output
+
+  LAST_DONE=$(grep '^\- \[x\]' IMPLEMENTATION_PLAN.md | tail -1 || true)
+
+  if [ -n "$result" ] && ! echo "$LAST_DONE" | grep -qi "P0:"; then
+    echo "--- Review pass for iteration $i ---" | tee -a "$LOG_FILE"
+
+    review=$($TIMEOUT_CMD "$REVIEW_TIMEOUT" claude -p "$(cat REVIEW_PROMPT.md)" \
+      --model "$REVIEW_MODEL" \
+      --allowedTools "Bash" "Read" "Write" "Edit" "MultiEdit" "Task" "mcp__gemini__ask-gemini" "Agent(security-reviewer)" \
+      --output-format text 2>&1) || {
+      review_exit=$?
+      echo "WARNING: Review pass exited with code $review_exit. Continuing." | tee -a "$LOG_FILE"
+      review=""
+    }
+
+    echo "$review" | tee -a "$LOG_FILE"
+    echo "=== Review pass finished: $(date) ===" | tee -a "$LOG_FILE"
+
+    # Rate limit check on review pass too
+    if is_rate_limited "${review:-}"; then
+      echo "Rate limit detected in review pass. Pausing 60 seconds..." | tee -a "$LOG_FILE"
+      sleep 60
+    fi
+  else
+    echo "--- Skipping review (scaffolding task or empty result) ---" | tee -a "$LOG_FILE"
+  fi
+
+  # ── Rate limit check on implementation pass ─────────────────────────────
+
   if is_rate_limited "$result"; then
     echo "" | tee -a "$LOG_FILE"
-    echo "Rate limit detected in iteration $i output. Pausing 60 seconds before next iteration..." | tee -a "$LOG_FILE"
+    echo "Rate limit detected. Pausing 60 seconds..." | tee -a "$LOG_FILE"
     sleep 60
   fi
 
-  # Brief pause between iterations to avoid hammering the API
+  # Brief pause between iterations
   if [ $i -lt $MAX_ITERATIONS ]; then
     echo "--- Pausing 5 seconds before iteration $((i+1)) ---" | tee -a "$LOG_FILE"
     echo "" | tee -a "$LOG_FILE"
