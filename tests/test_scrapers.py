@@ -204,7 +204,7 @@ class TestMatchUtilsAmazon:
 
         match = find_best_match(results, "toor dal 1 kg")
         assert match is not None, "find_best_match returned None for 'toor dal 1 kg' on Amazon"
-        assert "dal" in match["name"].lower() or "toor" in match["name"].lower()
+        assert "toor" in match["name"].lower() and "dal" in match["name"].lower()
         assert match["price"] > 0
 
     def test_brand_constrained_match_amazon(self, page):
@@ -214,12 +214,13 @@ class TestMatchUtilsAmazon:
         results = extract_results(page)
         assert len(results) > 0, "Amazon returned no results for 'tata toor dal 1 kg'"
 
-        # Try matching with brand constraint — result should have the brand or None if no brand match
+        # Searching "tata toor dal 1 kg" should surface Tata-branded products;
+        # assert match is not None so the brand assertion is always exercised.
         match = find_best_match(results, "toor dal 1 kg", brand_constraint="Tata")
-        if match is not None:
-            assert "tata" in match["brand"].lower(), (
-                f"Brand constraint 'Tata' not found in match brand: {match['brand']}"
-            )
+        assert match is not None, "find_best_match returned None with brand_constraint='Tata' on Amazon"
+        assert "tata" in match["brand"].lower(), (
+            f"Brand constraint 'Tata' not found in match brand: {match['brand']}"
+        )
 
 
 # Integration test: requires browser profile with Blinkit login
@@ -234,7 +235,7 @@ class TestMatchUtilsBlinkit:
 
         match = find_best_match(results, "toor dal 1 kg")
         assert match is not None, "find_best_match returned None for 'toor dal 1 kg' on Blinkit"
-        assert "dal" in match["name"].lower() or "toor" in match["name"].lower()
+        assert "toor" in match["name"].lower() and "dal" in match["name"].lower()
         assert match["price"] > 0
 
     def test_brand_constrained_match_blinkit(self, page):
@@ -244,9 +245,10 @@ class TestMatchUtilsBlinkit:
         results = blinkit_extract_results(page)
         assert len(results) > 0, "Blinkit returned no results for 'tata toor dal 1 kg'"
 
-        # Try matching with brand constraint — result should have the brand or None if no brand match
+        # Searching "tata toor dal 1 kg" should surface Tata-branded products;
+        # assert match is not None so the brand assertion is always exercised.
         match = find_best_match(results, "toor dal 1 kg", brand_constraint="Tata")
-        if match is not None:
-            assert "tata" in match["brand"].lower(), (
-                f"Brand constraint 'Tata' not found in match brand: {match['brand']}"
-            )
+        assert match is not None, "find_best_match returned None with brand_constraint='Tata' on Blinkit"
+        assert "tata" in match["brand"].lower(), (
+            f"Brand constraint 'Tata' not found in match brand: {match['brand']}"
+        )
