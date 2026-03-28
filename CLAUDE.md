@@ -125,7 +125,7 @@ These MCP servers are configured at user scope (`~/.claude.json` or via `claude 
 
 **Brand matching uses the candidate's `brand` field, not the product name.** When `brand_constraint` is set, the filter checks `brand_constraint.lower() in candidate["brand"].lower()`. This is a substring match against the brand field specifically, not the product name.
 
-**Dynamic fee discovery — from the page, not from the cart.** Amazon fees are read from delivery badges on the product listing page. Blinkit fees are read from page banners. As a fallback for Blinkit, the scraper navigates to the empty cart page to read fee text — but never adds items to the cart. Never hardcode fee structures.
+**Dynamic fee discovery — from the page and the cart.** Amazon fees are read from delivery badges on the product listing page. Blinkit fees are read from page banners first, then the scraper always also navigates to the empty cart page (the most authoritative source for fee structure). Items are never added to the cart. Never hardcode fee structures.
 
 **Symmetric fee structure across platforms.** Both Amazon and Blinkit use the same fee dict schema: `{"delivery_fee", "handling_fee", "free_delivery_threshold", "cashback_tiers"}`. Amazon's `handling_fee` is 0. This keeps the optimizer and formatter generic.
 
@@ -180,7 +180,13 @@ Both are required. The settings.json covers interactive use. The `--allowedTools
 
 *(This section is updated by Claude Code during Ralph iterations when new platform-specific quirks or patterns are discovered.)*
 
-- (Empty at project start. Add entries here as the build progresses.)
+- Both scrapers cap results at 20 candidates per search to avoid processing noise from lower-relevance listings.
+- Amazon brand extraction only recognizes three specific patterns: "by BrandName", "Visit the BrandName Store", "Brand: BrandName". Other secondary text is ignored.
+- Blinkit brand extraction never infers brand from the product name (e.g., first word). Returns empty string if no brand-specific element is found, to avoid wrong results for multi-word brands like "Mother Dairy" or adjectives like "Low Fat".
+- Blinkit uses multiple selector fallback lists for every UI interaction (product cards, names, prices, search bar, location widget). The first selector that matches wins. This makes scrapers more resilient to Blinkit's class name changes.
+- Blinkit fee discovery always visits the cart page after reading the current page, not just as a fallback. The cart page is the most authoritative fee source.
+- Amazon's `_check_session_expired` checks URL for "signin", "login", or "auth" keywords. Blinkit uses the same approach.
+- `dismiss_modals()` on Blinkit includes a keyboard Escape press as a catch-all after trying all close-button selectors.
 
 ## E2E Test Notes
 

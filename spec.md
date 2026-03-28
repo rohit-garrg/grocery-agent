@@ -30,7 +30,7 @@ The agent runs via `claude -p` (Claude Code headless mode) on a Max plan. **Brow
 
 - User does NOT have Blinkit Plus.
 - Delivery fees and handling charges vary by order value. The scraper reads the current fee thresholds from the **delivery info widget or banner** visible on the search/category page (e.g., "Free delivery above ₹199" or "₹25 delivery fee").
-- As a fallback (only if no fee info is visible on the search/category page), navigate to the empty cart page and read any fee structure text displayed there. Do NOT add items to the cart for fee discovery. If no fee info is found on either the search page or the empty cart page, use defaults: ₹25 delivery, ₹9 handling, free delivery above ₹199, no cashback.
+- After reading fees from the current page, also navigate to the empty cart page and read any fee structure text displayed there (the cart page is the most authoritative source). Do NOT add items to the cart for fee discovery. If no fee info is found on either the search page or the cart page, use defaults: ₹25 delivery, ₹9 handling, free delivery above ₹199, no cashback.
 - Location must be set to pincode 122001. Blinkit typically prompts for location on first visit or when location isn't set.
 - May show app-install prompts or location modals that need dismissing before searching.
 
@@ -266,7 +266,9 @@ grocery-agent/
 │   ├── test_master_list.py
 │   ├── test_selection_parser.py
 │   ├── test_match_utils.py
-│   └── test_scrapers.py          # Integration tests (marked, require browser)
+│   ├── test_scrapers.py          # Integration tests (marked, require browser)
+│   ├── test_browser_smoke.py     # Browser context smoke test (integration)
+│   └── test_telegram_bot.py      # Telegram bot unit tests
 ├── browser_profile/              # Playwright persistent context (gitignored)
 ├── logs/                         # Agent run logs (gitignored)
 └── price_history/                # Historical price data (gitignored)
