@@ -78,7 +78,7 @@ Reference: `spec.md` for full requirements.
 
 - [x] **C4: Match utils integration.** Add integration tests (marked `@pytest.mark.integration`) to verify `find_best_match()` works correctly with real scraped results from both platforms. Test: search "toor dal 1 kg" on both platforms, pass results to `find_best_match()`, verify a reasonable match is returned. Test: search for a brand-constrained item, verify brand filter works on real results. Verify: tests pass.
 
-- [ ] **C-SIMPLIFY: Code health pass for Phase C.** Review browser_manager, scraper_amazon, scraper_blinkit. Simplify without changing behavior. See PROMPT.md "SIMPLIFY tasks" rules.
+- [x] **C-SIMPLIFY: Code health pass for Phase C.** Review browser_manager, scraper_amazon, scraper_blinkit. Simplify without changing behavior. See PROMPT.md "SIMPLIFY tasks" rules.
 
 - [ ] **C-SYNC-DOCS: Documentation sync after Phase C.** Update docs to match actual scraper implementations, selectors, and any platform quirks discovered. See PROMPT.md "SYNC-DOCS tasks" rules.
 
