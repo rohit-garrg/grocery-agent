@@ -85,10 +85,18 @@ async def _call_agent(selection_string):
     )
 
 
+async def _cancel_pending_state(update: Update, user_id: int) -> None:
+    """If a remove confirmation is pending, cancel it before processing a new command."""
+    if state.get(user_id, {}).get("step") == "awaiting_remove_confirm":
+        state.pop(user_id, None)
+        await update.message.reply_text("Removal cancelled.")
+
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /help command."""
     if not is_allowed_user(update):
         return
+    await _cancel_pending_state(update, update.effective_user.id)
     await update.message.reply_text(HELP_TEXT)
 
 
@@ -96,6 +104,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     """Handle /start command."""
     if not is_allowed_user(update):
         return
+    await _cancel_pending_state(update, update.effective_user.id)
     await update.message.reply_text(f"Welcome to the Grocery Price Agent!\n\n{HELP_TEXT}")
 
 
@@ -103,6 +112,7 @@ async def compare_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     """Handle /compare -- show master list and await selection."""
     if not is_allowed_user(update):
         return
+    await _cancel_pending_state(update, update.effective_user.id)
 
     items = load_list(MASTER_LIST_PATH)
     if not items:
@@ -164,6 +174,7 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     """Handle /add <name> -- add item to master list."""
     if not is_allowed_user(update):
         return
+    await _cancel_pending_state(update, update.effective_user.id)
 
     text = update.message.text or ""
     # Extract everything after "/add "
@@ -184,6 +195,7 @@ async def remove_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     """Handle /remove <id> -- remove item from master list (with confirmation)."""
     if not is_allowed_user(update):
         return
+    await _cancel_pending_state(update, update.effective_user.id)
 
     text = update.message.text or ""
     parts = text.split()
@@ -239,8 +251,8 @@ async def on_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             try:
                 remove_item(MASTER_LIST_PATH, item_id)
                 await update.message.reply_text(f"Removed #{item_id}.")
-            except ValueError as e:
-                await update.message.reply_text(f"Error: {e}")
+            except Exception as e:
+                await update.message.reply_text(f"Error removing item: {e}")
         else:
             await update.message.reply_text("Removal cancelled.")
         state.pop(user_id, None)

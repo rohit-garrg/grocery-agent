@@ -525,3 +525,62 @@ class TestRemoveConfirmFlow:
             text = mock_update_allowed.message.reply_text.call_args[0][0]
             assert "cancelled" in text.lower()
             assert allowed_user_id not in mock_state
+
+    @pytest.mark.asyncio
+    async def test_remove_error_shown_to_user(self, mock_update_allowed, mock_context, allowed_user_id):
+        """Non-ValueError exceptions (e.g. disk errors) are shown gracefully."""
+        mock_update_allowed.message.text = "yes"
+        mock_state = {allowed_user_id: {"step": "awaiting_remove_confirm", "item_id": 3}}
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)), \
+             patch("src.telegram_bot.remove_item", side_effect=RuntimeError("disk full")), \
+             patch("src.telegram_bot.state", mock_state):
+            from src.telegram_bot import on_text_message
+            await on_text_message(mock_update_allowed, mock_context)
+            text = mock_update_allowed.message.reply_text.call_args[0][0]
+            assert "Error" in text
+            assert allowed_user_id not in mock_state
+
+
+# --- State cancellation when command interrupts pending remove ---
+
+
+class TestCancelPendingStateOnCommand:
+    @pytest.mark.asyncio
+    async def test_help_cancels_pending_remove(self, mock_update_allowed, mock_context, allowed_user_id):
+        mock_state = {allowed_user_id: {"step": "awaiting_remove_confirm", "item_id": 3}}
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)), \
+             patch("src.telegram_bot.state", mock_state):
+            from src.telegram_bot import help_command
+            await help_command(mock_update_allowed, mock_context)
+            assert allowed_user_id not in mock_state
+            calls = [c[0][0] for c in mock_update_allowed.message.reply_text.call_args_list]
+            assert any("cancelled" in t.lower() for t in calls)
+
+    @pytest.mark.asyncio
+    async def test_add_cancels_pending_remove(self, mock_update_allowed, mock_context, allowed_user_id):
+        mock_update_allowed.message.text = "/add Milk"
+        mock_state = {allowed_user_id: {"step": "awaiting_remove_confirm", "item_id": 3}}
+        new_item = {"id": 5, "name": "Milk", "query": "Milk", "brand": None, "category": "uncategorized"}
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)), \
+             patch("src.telegram_bot.add_item", return_value=new_item), \
+             patch("src.telegram_bot.state", mock_state):
+            from src.telegram_bot import add_command
+            await add_command(mock_update_allowed, mock_context)
+            assert allowed_user_id not in mock_state
+            calls = [c[0][0] for c in mock_update_allowed.message.reply_text.call_args_list]
+            assert any("cancelled" in t.lower() for t in calls)
+
+    @pytest.mark.asyncio
+    async def test_remove_cancels_prior_pending_remove(self, mock_update_allowed, mock_context, allowed_user_id):
+        mock_update_allowed.message.text = "/remove 5"
+        mock_state = {allowed_user_id: {"step": "awaiting_remove_confirm", "item_id": 3}}
+        item = {"id": 5, "name": "Eggs", "category": "dairy"}
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)), \
+             patch("src.telegram_bot.get_item", return_value=item), \
+             patch("src.telegram_bot.state", mock_state):
+            from src.telegram_bot import remove_command
+            await remove_command(mock_update_allowed, mock_context)
+            # Old pending state was cancelled, new one was set for item 5
+            assert mock_state[allowed_user_id]["item_id"] == 5
+            calls = [c[0][0] for c in mock_update_allowed.message.reply_text.call_args_list]
+            assert any("cancelled" in t.lower() for t in calls)
