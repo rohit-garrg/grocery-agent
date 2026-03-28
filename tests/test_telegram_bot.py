@@ -354,6 +354,26 @@ class TestSelectionFlow:
             assert allowed_user_id not in mock_state
 
     @pytest.mark.asyncio
+    async def test_locked_output_handled(self, mock_update_allowed, mock_context, allowed_user_id):
+        items = [{"id": 1, "name": "Item", "category": "test"}]
+        mock_update_allowed.message.text = "1"
+        mock_state = {allowed_user_id: {"step": "awaiting_selection"}}
+        mock_result = MagicMock()
+        mock_result.stdout = "LOCKED"
+        mock_result.stderr = ""
+
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)), \
+             patch("src.telegram_bot.load_list", return_value=items), \
+             patch("src.telegram_bot.state", mock_state), \
+             patch("src.telegram_bot._call_agent", new_callable=AsyncMock, return_value=mock_result):
+            from src.telegram_bot import on_text_message
+            await on_text_message(mock_update_allowed, mock_context)
+            calls = mock_update_allowed.message.reply_text.call_args_list
+            locked_msg = calls[1][0][0]
+            assert "already running" in locked_msg.lower()
+            assert allowed_user_id not in mock_state
+
+    @pytest.mark.asyncio
     async def test_no_output_handled(self, mock_update_allowed, mock_context, allowed_user_id):
         items = [{"id": 1, "name": "Item", "category": "test"}]
         mock_update_allowed.message.text = "1"

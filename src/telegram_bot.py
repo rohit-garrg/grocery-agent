@@ -152,7 +152,11 @@ async def _handle_selection(update: Update, user_id: int) -> None:
     try:
         result = await _call_agent(selection_string)
         output = result.stdout.strip()
-        if output:
+        if output == "LOCKED":
+            await update.message.reply_text(
+                "A comparison is already running. Please wait and try again in a few minutes."
+            )
+        elif output:
             for chunk in split_message(output):
                 await update.message.reply_text(chunk)
         else:
