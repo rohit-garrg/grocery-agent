@@ -157,12 +157,23 @@ async def _handle_selection(update: Update, user_id: int) -> None:
         f"Got it. Fetching prices for {n} items... (this takes 2-5 minutes)"
     )
 
+    # Send a "still working..." nudge if the agent takes longer than 60s
+    async def _still_working():
+        await asyncio.sleep(60)
+        await update.message.reply_text("Still working on the comparison...")
+
+    nudge_task = asyncio.create_task(_still_working())
+
     try:
         result = await _call_agent(selection_string)
         output = result.stdout.strip()
         if output == "LOCKED":
             await update.message.reply_text(
                 "A comparison is already running. Please wait."
+            )
+        elif output.startswith("ERROR:"):
+            await update.message.reply_text(
+                "Something went wrong during the comparison. Check logs for details."
             )
         elif output:
             for chunk in split_message(output):
@@ -174,11 +185,12 @@ async def _handle_selection(update: Update, user_id: int) -> None:
             )
     except subprocess.TimeoutExpired:
         await update.message.reply_text(
-            "Comparison timed out after 10 minutes. Please try again."
+            "Comparison timed out after 10 minutes. The platforms may be slow \u2014 please try again."
         )
     except Exception as e:
         await update.message.reply_text(f"Error running comparison: {e}")
     finally:
+        nudge_task.cancel()
         state.pop(user_id, None)
 
 

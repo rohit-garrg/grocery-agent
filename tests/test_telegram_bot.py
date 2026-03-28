@@ -351,6 +351,7 @@ class TestSelectionFlow:
             calls = mock_update_allowed.message.reply_text.call_args_list
             timeout_msg = calls[1][0][0]
             assert "timed out" in timeout_msg.lower()
+            assert "platforms may be slow" in timeout_msg.lower()
             assert allowed_user_id not in mock_state
 
     @pytest.mark.asyncio
@@ -622,3 +623,49 @@ class TestCancelPendingStateOnCommand:
             assert mock_state[allowed_user_id]["item_id"] == 5
             calls = [c[0][0] for c in mock_update_allowed.message.reply_text.call_args_list]
             assert any("cancelled" in t.lower() for t in calls)
+
+
+# --- D4: Wire Telegram to agent ---
+
+
+class TestAgentErrorHandling:
+    @pytest.mark.asyncio
+    async def test_error_output_handled(self, mock_update_allowed, mock_context, allowed_user_id):
+        """stdout starting with ERROR: sends a user-friendly error message."""
+        items = [{"id": 1, "name": "Item", "category": "test"}]
+        mock_update_allowed.message.text = "1"
+        mock_state = {allowed_user_id: {"step": "awaiting_selection"}}
+        mock_result = MagicMock()
+        mock_result.stdout = "ERROR: claude -p failed or timed out"
+        mock_result.stderr = ""
+
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)), \
+             patch("src.telegram_bot.load_list", return_value=items), \
+             patch("src.telegram_bot.state", mock_state), \
+             patch("src.telegram_bot._call_agent", new_callable=AsyncMock, return_value=mock_result):
+            from src.telegram_bot import on_text_message
+            await on_text_message(mock_update_allowed, mock_context)
+            calls = mock_update_allowed.message.reply_text.call_args_list
+            error_msg = calls[1][0][0]
+            assert "Something went wrong" in error_msg
+            assert "Check logs" in error_msg
+            assert allowed_user_id not in mock_state
+
+    @pytest.mark.asyncio
+    async def test_still_working_cancelled_on_fast_response(self, mock_update_allowed, mock_context, allowed_user_id):
+        """Nudge task is cancelled when agent returns quickly (no 'still working' sent)."""
+        items = [{"id": 1, "name": "Item", "category": "test"}]
+        mock_update_allowed.message.text = "1"
+        mock_state = {allowed_user_id: {"step": "awaiting_selection"}}
+        mock_result = MagicMock()
+        mock_result.stdout = "Comparison result"
+        mock_result.stderr = ""
+
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)), \
+             patch("src.telegram_bot.load_list", return_value=items), \
+             patch("src.telegram_bot.state", mock_state), \
+             patch("src.telegram_bot._call_agent", new_callable=AsyncMock, return_value=mock_result):
+            from src.telegram_bot import on_text_message
+            await on_text_message(mock_update_allowed, mock_context)
+            calls = [c[0][0] for c in mock_update_allowed.message.reply_text.call_args_list]
+            assert not any("still working" in t.lower() for t in calls)
