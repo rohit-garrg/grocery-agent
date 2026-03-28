@@ -17,9 +17,11 @@ from telegram.ext import (
 try:
     from src.master_list_manager import load_list
     from src.selection_parser import parse_selection
+    from src.formatter import split_message
 except ImportError:
     from master_list_manager import load_list
     from selection_parser import parse_selection
+    from formatter import split_message
 
 load_dotenv()
 
@@ -29,6 +31,7 @@ MASTER_LIST_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "master_list.json"
 )
+AGENT_SH_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent.sh")
 
 # In-memory conversation state keyed by user_id.
 # Stores current flow step and pending data. Lost on restart (acceptable per spec).
@@ -75,7 +78,7 @@ async def _call_agent(selection_string):
     """Call agent.sh via subprocess. Returns CompletedProcess."""
     return await asyncio.to_thread(
         subprocess.run,
-        ["bash", "src/agent.sh", selection_string],
+        ["bash", AGENT_SH_PATH, selection_string],
         capture_output=True, text=True, timeout=600,
     )
 
@@ -106,7 +109,8 @@ async def compare_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
         return
 
-    await update.message.reply_text(_format_master_list(items))
+    for chunk in split_message(_format_master_list(items)):
+        await update.message.reply_text(chunk)
     state[update.effective_user.id] = {"step": "awaiting_selection"}
 
 
@@ -137,9 +141,8 @@ async def _handle_selection(update: Update, user_id: int) -> None:
         result = await _call_agent(selection_string)
         output = result.stdout.strip()
         if output:
-            while output:
-                await update.message.reply_text(output[:4096])
-                output = output[4096:]
+            for chunk in split_message(output):
+                await update.message.reply_text(chunk)
         else:
             stderr = result.stderr.strip() if result.stderr else ""
             await update.message.reply_text(
