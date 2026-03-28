@@ -125,8 +125,8 @@ def _scrape_platform(platform, page, items, pincode):
 
 
 def _log_all(selection, selected_items, platform_results, platform_fees,
-             platform_errors, session_warnings, optimizer_result, start_time):
-    """Log run data and price history. Never raises — errors are swallowed."""
+             expired_platforms, optimizer_result, start_time):
+    """Log run data and price history. Never raises — errors are printed to stderr."""
     try:
         duration = round(time.time() - start_time)
         timestamp = datetime.now().isoformat()
@@ -136,7 +136,7 @@ def _log_all(selection, selected_items, platform_results, platform_fees,
         for platform in ("amazon", "blinkit"):
             prices = platform_results.get(platform, {})
             fees = platform_fees.get(platform, {})
-            if fees.get("status") == "session_expired":
+            if platform in expired_platforms:
                 platforms_log[platform] = {"status": "session_expired"}
             else:
                 found = sum(1 for v in prices.values() if v is not None)
@@ -168,21 +168,18 @@ def _log_all(selection, selected_items, platform_results, platform_fees,
             record = {"id": item["id"], "name": item["name"],
                       "amazon": amazon_data, "blinkit": blinkit_data}
 
-            # Determine status for unavailable platforms
-            amazon_fees = platform_fees.get("amazon", {})
             if amazon_data is None:
-                record["amazon_status"] = "session_expired" if amazon_fees.get("status") == "session_expired" else "unavailable"
+                record["amazon_status"] = "session_expired" if "amazon" in expired_platforms else "unavailable"
 
-            blinkit_fees = platform_fees.get("blinkit", {})
             if blinkit_data is None:
-                record["blinkit_status"] = "session_expired" if blinkit_fees.get("status") == "session_expired" else "unavailable"
+                record["blinkit_status"] = "session_expired" if "blinkit" in expired_platforms else "unavailable"
 
             price_items.append(record)
 
         log_prices(os.path.abspath(PRICE_HISTORY_DIR), price_items)
-    except Exception:
+    except Exception as e:
         # Logging must never break the pipeline
-        pass
+        print(f"Warning: logging failed: {e}", file=sys.stderr)
 
 
 def run_comparison(selection_string):
@@ -223,6 +220,7 @@ def run_comparison(selection_string):
         platform_fees = {}
         platform_errors = {}
         session_warnings = []
+        expired_platforms = set()
 
         # Step 3: Scrape each platform
         for platform in ("amazon", "blinkit"):
@@ -237,6 +235,7 @@ def run_comparison(selection_string):
                     session_warnings.append(
                         f"\u26a0\ufe0f {display} session expired \u2014 please re-login in the browser profile."
                     )
+                    expired_platforms.add(platform)
                     platform_fees[platform] = dict(DEFAULT_FEES[platform])
                     # Mark all items as unavailable for this platform
                     for item in selected_items:
@@ -266,7 +265,7 @@ def run_comparison(selection_string):
                 for err in errs:
                     output_parts.append(err)
             _log_all(selection, selected_items, platform_results, platform_fees,
-                     platform_errors, session_warnings, None, start_time)
+                     expired_platforms, None, start_time)
             return "\n".join(output_parts), 1
 
         # Step 5: Compile price data for optimizer
@@ -295,7 +294,7 @@ def run_comparison(selection_string):
             result = optimize_cart(optimizer_items, platform_fees)
         else:
             _log_all(selection, selected_items, platform_results, platform_fees,
-                     platform_errors, session_warnings, None, start_time)
+                     expired_platforms, None, start_time)
             return "No items could be found on any platform.", 1
 
         # Step 7: Format output
@@ -316,7 +315,7 @@ def run_comparison(selection_string):
 
         # Step 9: Logging
         _log_all(selection, selected_items, platform_results, platform_fees,
-                 platform_errors, session_warnings, result, start_time)
+                 expired_platforms, result, start_time)
 
         return "\n---\n".join(messages), 0
 

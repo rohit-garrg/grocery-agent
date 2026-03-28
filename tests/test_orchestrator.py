@@ -308,3 +308,87 @@ class TestConsecutiveFailures:
         assert len(search_calls) == 2
         # Blinkit should still work, so we get results
         assert exit_code == 0
+
+
+class TestLoggingCalled:
+    def test_log_all_called_on_success(self, setup_env, mock_scrapers_success, monkeypatch, tmp_path):
+        """Logging functions are called on a successful run."""
+        log_calls = []
+        price_calls = []
+
+        monkeypatch.setattr("orchestrator.LOG_DIR", str(tmp_path / "logs"))
+        monkeypatch.setattr("orchestrator.PRICE_HISTORY_DIR", str(tmp_path / "price_history"))
+
+        import logger as logger_mod
+        original_log_run = logger_mod.log_run
+        original_log_prices = logger_mod.log_prices
+
+        monkeypatch.setattr("orchestrator.log_run", lambda d, r: log_calls.append(r) or original_log_run(d, r))
+        monkeypatch.setattr("orchestrator.log_prices", lambda d, r: price_calls.append(r) or original_log_prices(d, r))
+
+        output, exit_code = run_comparison("1,2")
+        assert exit_code == 0
+        assert len(log_calls) == 1
+        assert len(price_calls) == 1
+        assert log_calls[0]["platforms"]["amazon"]["status"] == "success"
+
+    def test_log_all_called_on_failure(self, setup_env, monkeypatch, tmp_path):
+        """Logging is called even when both platforms fail."""
+        log_calls = []
+
+        monkeypatch.setattr("orchestrator.LOG_DIR", str(tmp_path / "logs"))
+        monkeypatch.setattr("orchestrator.PRICE_HISTORY_DIR", str(tmp_path / "price_history"))
+
+        def expired(page, pincode):
+            raise RuntimeError("session expired")
+
+        monkeypatch.setattr("orchestrator.scraper_amazon.set_location", expired)
+        monkeypatch.setattr("orchestrator.scraper_amazon.search_items", lambda p, q: None)
+        monkeypatch.setattr("orchestrator.scraper_amazon.extract_results", lambda p: [])
+        monkeypatch.setattr("orchestrator.scraper_amazon.discover_fees_amazon", lambda p: {})
+        monkeypatch.setattr("orchestrator.scraper_blinkit.set_location", expired)
+        monkeypatch.setattr("orchestrator.scraper_blinkit.dismiss_modals", lambda p: None)
+        monkeypatch.setattr("orchestrator.scraper_blinkit.search_items", lambda p, q: None)
+        monkeypatch.setattr("orchestrator.scraper_blinkit.extract_results", lambda p: [])
+        monkeypatch.setattr("orchestrator.scraper_blinkit.discover_fees_blinkit", lambda p: {})
+
+        import logger as logger_mod
+        original_log_run = logger_mod.log_run
+        monkeypatch.setattr("orchestrator.log_run", lambda d, r: log_calls.append(r) or original_log_run(d, r))
+        monkeypatch.setattr("orchestrator.log_prices", lambda d, r: None)
+
+        output, exit_code = run_comparison("1,2")
+        assert exit_code == 1
+        assert len(log_calls) == 1
+
+    def test_session_expired_logged_correctly(self, setup_env, monkeypatch, tmp_path):
+        """When a platform session expires, the run log records session_expired status."""
+        log_calls = []
+
+        monkeypatch.setattr("orchestrator.LOG_DIR", str(tmp_path / "logs"))
+        monkeypatch.setattr("orchestrator.PRICE_HISTORY_DIR", str(tmp_path / "price_history"))
+
+        def amazon_expired(page, pincode):
+            raise RuntimeError("Amazon session expired — please re-login in the browser profile.")
+
+        monkeypatch.setattr("orchestrator.scraper_amazon.set_location", amazon_expired)
+        monkeypatch.setattr("orchestrator.scraper_amazon.search_items", lambda p, q: None)
+        monkeypatch.setattr("orchestrator.scraper_amazon.extract_results", lambda p: [])
+        monkeypatch.setattr("orchestrator.scraper_amazon.discover_fees_amazon", lambda p: {})
+        monkeypatch.setattr("orchestrator.scraper_blinkit.set_location", lambda p, pin: True)
+        monkeypatch.setattr("orchestrator.scraper_blinkit.dismiss_modals", lambda p: None)
+        monkeypatch.setattr("orchestrator.scraper_blinkit.search_items", _mock_blinkit_search)
+        monkeypatch.setattr("orchestrator.scraper_blinkit.extract_results", _mock_blinkit_extract)
+        monkeypatch.setattr("orchestrator.scraper_blinkit.discover_fees_blinkit", _mock_discover_fees_blinkit)
+
+        import logger as logger_mod
+        original_log_run = logger_mod.log_run
+        original_log_prices = logger_mod.log_prices
+        monkeypatch.setattr("orchestrator.log_run", lambda d, r: log_calls.append(r) or original_log_run(d, r))
+        monkeypatch.setattr("orchestrator.log_prices", lambda d, r: original_log_prices(d, r))
+
+        output, exit_code = run_comparison("1,2")
+        assert exit_code == 0
+        assert len(log_calls) == 1
+        assert log_calls[0]["platforms"]["amazon"]["status"] == "session_expired"
+        assert log_calls[0]["platforms"]["blinkit"]["status"] == "success"
