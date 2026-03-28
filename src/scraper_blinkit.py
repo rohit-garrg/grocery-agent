@@ -58,12 +58,10 @@ def set_location(page, pincode):
             "div[class*='location']",
             ".LocationBar__Container",
         ]
-        clicked = False
         for selector in location_triggers:
             trigger = page.locator(selector)
             if trigger.count() > 0:
                 trigger.first.click(timeout=3000)
-                clicked = True
                 time.sleep(1)
                 break
 
