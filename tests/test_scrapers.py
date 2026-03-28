@@ -1,10 +1,11 @@
-"""Integration tests for scrapers. Require a live browser profile with platform logins."""
+"""Integration tests for scrapers and match utils. Require a live browser profile with platform logins."""
 
 import os
 
 import pytest
 
 from src.browser_manager import get_browser_context, close_context
+from src.match_utils import find_best_match
 from src.scraper_amazon import (
     set_location, search_items, extract_results, discover_fees_amazon,
 )
@@ -187,3 +188,65 @@ class TestBlinkitSessionExpiry:
         page.goto("https://blinkit.com/login", wait_until="domcontentloaded", timeout=30000)
         fees = discover_fees_blinkit(page)
         assert fees.get("status") == "session_expired"
+
+
+# ---- Match utils integration tests ----
+
+# Integration test: requires browser profile with Amazon Prime login
+@pytest.mark.integration
+class TestMatchUtilsAmazon:
+    def test_match_toor_dal_amazon(self, page):
+        """Search 'toor dal 1 kg' on Amazon and verify find_best_match returns a result."""
+        set_location(page, "122001")
+        search_items(page, "toor dal 1 kg")
+        results = extract_results(page)
+        assert len(results) > 0, "Amazon returned no results for 'toor dal 1 kg'"
+
+        match = find_best_match(results, "toor dal 1 kg")
+        assert match is not None, "find_best_match returned None for 'toor dal 1 kg' on Amazon"
+        assert "dal" in match["name"].lower() or "toor" in match["name"].lower()
+        assert match["price"] > 0
+
+    def test_brand_constrained_match_amazon(self, page):
+        """Search with a brand constraint and verify the brand filter works on real results."""
+        set_location(page, "122001")
+        search_items(page, "tata toor dal 1 kg")
+        results = extract_results(page)
+        assert len(results) > 0, "Amazon returned no results for 'tata toor dal 1 kg'"
+
+        # Try matching with brand constraint — result should have the brand or None if no brand match
+        match = find_best_match(results, "toor dal 1 kg", brand_constraint="Tata")
+        if match is not None:
+            assert "tata" in match["brand"].lower(), (
+                f"Brand constraint 'Tata' not found in match brand: {match['brand']}"
+            )
+
+
+# Integration test: requires browser profile with Blinkit login
+@pytest.mark.integration
+class TestMatchUtilsBlinkit:
+    def test_match_toor_dal_blinkit(self, page):
+        """Search 'toor dal 1 kg' on Blinkit and verify find_best_match returns a result."""
+        blinkit_set_location(page, "122001")
+        blinkit_search_items(page, "toor dal 1 kg")
+        results = blinkit_extract_results(page)
+        assert len(results) > 0, "Blinkit returned no results for 'toor dal 1 kg'"
+
+        match = find_best_match(results, "toor dal 1 kg")
+        assert match is not None, "find_best_match returned None for 'toor dal 1 kg' on Blinkit"
+        assert "dal" in match["name"].lower() or "toor" in match["name"].lower()
+        assert match["price"] > 0
+
+    def test_brand_constrained_match_blinkit(self, page):
+        """Search with a brand constraint and verify the brand filter works on real results."""
+        blinkit_set_location(page, "122001")
+        blinkit_search_items(page, "tata toor dal 1 kg")
+        results = blinkit_extract_results(page)
+        assert len(results) > 0, "Blinkit returned no results for 'tata toor dal 1 kg'"
+
+        # Try matching with brand constraint — result should have the brand or None if no brand match
+        match = find_best_match(results, "toor dal 1 kg", brand_constraint="Tata")
+        if match is not None:
+            assert "tata" in match["brand"].lower(), (
+                f"Brand constraint 'Tata' not found in match brand: {match['brand']}"
+            )
