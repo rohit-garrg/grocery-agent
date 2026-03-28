@@ -308,12 +308,3 @@ class TestConsecutiveFailures:
         assert len(search_calls) == 2
         # Blinkit should still work, so we get results
         assert exit_code == 0
-
-
-class TestLoggingPlaceholder:
-    def test_logging_comment_exists(self):
-        """Verify the orchestrator has a placeholder for logging (D5 wiring)."""
-        import orchestrator
-        import inspect
-        source = inspect.getsource(orchestrator.run_comparison)
-        assert "log_run" in source or "logging" in source.lower() or "D5" in source

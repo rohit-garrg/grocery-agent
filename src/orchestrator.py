@@ -6,7 +6,6 @@ Exits 0 on success, 1 on total failure (no platforms available).
 
 import os
 import sys
-import time
 
 from dotenv import load_dotenv
 
@@ -113,8 +112,8 @@ def _scrape_platform(platform, page, items, pincode):
 
         if isinstance(discovered, dict) and discovered.get("status") == "session_expired":
             return prices, {"status": "session_expired", "platform": platform}, errors
-        fees = discovered
-    except Exception as e:
+        fees.update(discovered)
+    except RuntimeError as e:
         errors.append(f"{platform} fee discovery error: {e}")
 
     return prices, fees, errors
@@ -152,7 +151,6 @@ def run_comparison(selection_string):
     context, pw = get_browser_context(os.path.abspath(BROWSER_PROFILE_PATH))
 
     try:
-        start_time = time.time()
         platform_results = {}
         platform_fees = {}
         platform_errors = {}
@@ -177,6 +175,10 @@ def run_comparison(selection_string):
                         platform_results[platform][item["id"]] = None
                 else:
                     platform_fees[platform] = fees
+            except Exception as e:
+                platform_errors[platform] = [f"{platform} scraping failed unexpectedly: {e}"]
+                platform_results[platform] = {item["id"]: None for item in selected_items}
+                platform_fees[platform] = dict(DEFAULT_FEES[platform])
             finally:
                 page.close()
 
@@ -239,8 +241,6 @@ def run_comparison(selection_string):
 
         # Step 8: Split for Telegram and output
         messages = split_message(output)
-
-        duration = time.time() - start_time
 
         # Step 9: Logging (wired in D5 when logger.py is created)
         # log_run() and log_prices() will be called here
