@@ -10,14 +10,20 @@ def get_browser_context(profile_path):
     close_context() when done.
     """
     pw = sync_playwright().start()
-    context = pw.chromium.launch_persistent_context(
-        profile_path,
-        headless=True,
-    )
+    try:
+        context = pw.chromium.launch_persistent_context(
+            profile_path,
+            headless=True,
+        )
+    except Exception:
+        pw.stop()
+        raise
     return context, pw
 
 
 def close_context(context, playwright_instance):
     """Close the browser context and stop the Playwright instance."""
-    context.close()
-    playwright_instance.stop()
+    try:
+        context.close()
+    finally:
+        playwright_instance.stop()
