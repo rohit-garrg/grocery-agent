@@ -80,7 +80,7 @@ Reference: `spec.md` for full requirements.
 
 - [x] **C-SIMPLIFY: Code health pass for Phase C.** Review browser_manager, scraper_amazon, scraper_blinkit. Simplify without changing behavior. See PROMPT.md "SIMPLIFY tasks" rules.
 
-- [ ] **C-SYNC-DOCS: Documentation sync after Phase C.** Update docs to match actual scraper implementations, selectors, and any platform quirks discovered. See PROMPT.md "SYNC-DOCS tasks" rules.
+- [x] **C-SYNC-DOCS: Documentation sync after Phase C.** Update docs to match actual scraper implementations, selectors, and any platform quirks discovered. See PROMPT.md "SYNC-DOCS tasks" rules.
 
 ---
 
