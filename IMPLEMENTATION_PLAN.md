@@ -54,7 +54,7 @@ Reference: `spec.md` for full requirements.
 
 - [x] **A-SIMPLIFY: Code health pass for Phase A.** Review all source files in `src/` created during Phase A (master_list_manager, selection_parser, match_utils, optimizer, formatter). Simplify without changing behavior. See PROMPT.md "SIMPLIFY tasks" rules.
 
-- [ ] **A-SYNC-DOCS: Documentation sync after Phase A.** Verify spec.md, CLAUDE.md, and IMPLEMENTATION_PLAN.md match the actual code. See PROMPT.md "SYNC-DOCS tasks" rules.
+- [x] **A-SYNC-DOCS: Documentation sync after Phase A.** Verify spec.md, CLAUDE.md, and IMPLEMENTATION_PLAN.md match the actual code. See PROMPT.md "SYNC-DOCS tasks" rules.
 
 ---
 
