@@ -14,7 +14,11 @@ def set_location(page, pincode):
     """Navigate to amazon.in and ensure delivery location is set to pincode.
 
     Returns True on success. Raises RuntimeError on failure.
+    Raises ValueError if pincode is not a 6-digit string.
     """
+    if not (isinstance(pincode, str) and pincode.isdigit() and len(pincode) == 6):
+        raise ValueError(f"pincode must be a 6-digit string, got: {pincode!r}")
+
     page.goto("https://www.amazon.in", wait_until="domcontentloaded", timeout=30000)
 
     if _check_session_expired(page):
@@ -67,8 +71,10 @@ def set_location(page, pincode):
     except Exception:
         pass
 
-    # Pincode entry may have worked even if we can't verify the text
-    return True
+    raise RuntimeError(
+        f"Could not verify pincode {pincode} was set on Amazon — "
+        "location widget may have changed structure"
+    )
 
 
 def search_items(page, query):
@@ -170,25 +176,24 @@ def extract_results(page):
 
 
 def _extract_brand(card):
-    """Try to extract brand name from a search result card."""
-    # Try "by BrandName" pattern
+    """Try to extract brand name from a search result card.
+
+    Only returns text that comes from a known brand-indicator pattern
+    ("by BrandName", "Visit the BrandName Store", "Brand: BrandName").
+    """
     by_elem = card.locator("span.a-size-base.a-color-secondary")
-    if by_elem.count() > 0:
-        for j in range(min(by_elem.count(), 5)):
-            try:
-                text = (by_elem.nth(j).text_content(timeout=500) or "").strip()
-                # Skip generic labels
-                if text and text.lower() not in ("by", "in", "visit the", "brand:", ""):
-                    # Remove "by " prefix if present
-                    if text.lower().startswith("by "):
-                        text = text[3:].strip()
-                    # Remove "Visit the " prefix
-                    if text.lower().startswith("visit the "):
-                        text = text[10:].strip()
-                    if text:
-                        return text
-            except Exception:
-                continue
+    for j in range(min(by_elem.count(), 5)):
+        try:
+            text = (by_elem.nth(j).text_content(timeout=500) or "").strip()
+            tl = text.lower()
+            if tl.startswith("by "):
+                return text[3:].strip()
+            if tl.startswith("visit the ") and tl.endswith(" store"):
+                return text[10:-6].strip()
+            if tl.startswith("brand:"):
+                return text[6:].strip()
+        except Exception:
+            continue
     return ""
 
 
@@ -222,6 +227,18 @@ def discover_fees_amazon(page):
         match = re.search(pattern, page_text, re.IGNORECASE)
         if match:
             fees["free_delivery_threshold"] = float(match.group(1).replace(",", ""))
+            break
+
+    # Look for delivery fee below threshold (e.g., "₹40 delivery fee")
+    delivery_fee_patterns = [
+        r'₹\s*(\d[\d,]*)\s+delivery\s+fee',
+        r'delivery\s+fee\s+(?:of\s+)?₹\s*(\d[\d,]*)',
+        r'₹\s*(\d[\d,]*)\s+shipping',
+    ]
+    for pattern in delivery_fee_patterns:
+        match = re.search(pattern, page_text, re.IGNORECASE)
+        if match:
+            fees["delivery_fee"] = float(match.group(1).replace(",", ""))
             break
 
     # Look for cashback tiers
