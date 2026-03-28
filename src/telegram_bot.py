@@ -15,11 +15,11 @@ from telegram.ext import (
 )
 
 try:
-    from src.master_list_manager import load_list
+    from src.master_list_manager import load_list, add_item, remove_item, get_item
     from src.selection_parser import parse_selection
     from src.formatter import split_message
 except ImportError:
-    from master_list_manager import load_list
+    from master_list_manager import load_list, add_item, remove_item, get_item
     from selection_parser import parse_selection
     from formatter import split_message
 
@@ -40,6 +40,8 @@ state = {}
 HELP_TEXT = (
     "Available commands:\n"
     "/compare \u2014 Compare grocery prices\n"
+    "/add <name> \u2014 Add item to grocery list\n"
+    "/remove <id> \u2014 Remove item from grocery list\n"
     "/help \u2014 Show this help message"
 )
 
@@ -158,6 +160,55 @@ async def _handle_selection(update: Update, user_id: int) -> None:
         state.pop(user_id, None)
 
 
+async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /add <name> -- add item to master list."""
+    if not is_allowed_user(update):
+        return
+
+    text = update.message.text or ""
+    # Extract everything after "/add "
+    name = text[len("/add "):].strip() if text.lower().startswith("/add ") else ""
+    if not name:
+        await update.message.reply_text("Usage: /add <item name>\nExample: /add Amul Butter 500g")
+        return
+
+    new_item = add_item(MASTER_LIST_PATH, name)
+    await update.message.reply_text(
+        f"Added #{new_item['id']}: {new_item['name']} "
+        f"(category: {new_item['category']}). "
+        f"Edit master_list.json to set brand or tune the query."
+    )
+
+
+async def remove_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /remove <id> -- remove item from master list (with confirmation)."""
+    if not is_allowed_user(update):
+        return
+
+    text = update.message.text or ""
+    parts = text.split()
+    if len(parts) < 2:
+        await update.message.reply_text("Usage: /remove <id>\nExample: /remove 42")
+        return
+
+    try:
+        item_id = int(parts[1])
+    except ValueError:
+        await update.message.reply_text("Invalid id. Usage: /remove <id>")
+        return
+
+    item = get_item(MASTER_LIST_PATH, item_id)
+    if item is None:
+        await update.message.reply_text(f"Item #{item_id} not found.")
+        return
+
+    user_id = update.effective_user.id
+    state[user_id] = {"step": "awaiting_remove_confirm", "item_id": item_id}
+    await update.message.reply_text(
+        f"Remove #{item_id} {item['name']}? Reply yes to confirm."
+    )
+
+
 async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle unrecognized commands."""
     if not is_allowed_user(update):
@@ -182,7 +233,19 @@ async def on_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await _handle_selection(update, user_id)
         return
 
-    # Other state steps will be added in B3 (awaiting_remove_confirm, etc.)
+    if user_state.get("step") == "awaiting_remove_confirm":
+        item_id = user_state["item_id"]
+        if update.message.text.strip().lower() == "yes":
+            try:
+                remove_item(MASTER_LIST_PATH, item_id)
+                await update.message.reply_text(f"Removed #{item_id}.")
+            except ValueError as e:
+                await update.message.reply_text(f"Error: {e}")
+        else:
+            await update.message.reply_text("Removal cancelled.")
+        state.pop(user_id, None)
+        return
+
     await update.message.reply_text(
         f"Send /compare to start a price comparison.\n\n{HELP_TEXT}"
     )
@@ -206,6 +269,8 @@ def main() -> None:
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("compare", compare_command))
+    app.add_handler(CommandHandler("add", add_command))
+    app.add_handler(CommandHandler("remove", remove_command))
     app.add_handler(MessageHandler(filters.COMMAND, unknown_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text_message))
 

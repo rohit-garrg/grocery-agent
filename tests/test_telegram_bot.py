@@ -371,3 +371,157 @@ class TestSelectionFlow:
             calls = mock_update_allowed.message.reply_text.call_args_list
             error_msg = calls[1][0][0]
             assert "No output" in error_msg
+
+
+# --- B3: /add and /remove ---
+
+
+class TestAddCommand:
+    @pytest.mark.asyncio
+    async def test_add_item(self, mock_update_allowed, mock_context, allowed_user_id):
+        mock_update_allowed.message.text = "/add Amul Butter 500g"
+        new_item = {"id": 1, "name": "Amul Butter 500g", "query": "Amul Butter 500g",
+                    "brand": None, "category": "uncategorized"}
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)), \
+             patch("src.telegram_bot.add_item", return_value=new_item) as mock_add:
+            from src.telegram_bot import add_command
+            await add_command(mock_update_allowed, mock_context)
+            mock_add.assert_called_once()
+            text = mock_update_allowed.message.reply_text.call_args[0][0]
+            assert "#1" in text
+            assert "Amul Butter 500g" in text
+            assert "uncategorized" in text
+            assert "master_list.json" in text
+
+    @pytest.mark.asyncio
+    async def test_add_no_name(self, mock_update_allowed, mock_context, allowed_user_id):
+        mock_update_allowed.message.text = "/add"
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)):
+            from src.telegram_bot import add_command
+            await add_command(mock_update_allowed, mock_context)
+            text = mock_update_allowed.message.reply_text.call_args[0][0]
+            assert "Usage" in text
+
+    @pytest.mark.asyncio
+    async def test_add_empty_name(self, mock_update_allowed, mock_context, allowed_user_id):
+        mock_update_allowed.message.text = "/add   "
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)):
+            from src.telegram_bot import add_command
+            await add_command(mock_update_allowed, mock_context)
+            text = mock_update_allowed.message.reply_text.call_args[0][0]
+            assert "Usage" in text
+
+    @pytest.mark.asyncio
+    async def test_add_stranger_ignored(self, mock_update_stranger, mock_context, allowed_user_id):
+        mock_update_stranger.message.text = "/add Test"
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)):
+            from src.telegram_bot import add_command
+            await add_command(mock_update_stranger, mock_context)
+            mock_update_stranger.message.reply_text.assert_not_called()
+
+
+class TestRemoveCommand:
+    @pytest.mark.asyncio
+    async def test_remove_asks_confirmation(self, mock_update_allowed, mock_context, allowed_user_id):
+        mock_update_allowed.message.text = "/remove 3"
+        mock_state = {}
+        item = {"id": 3, "name": "Toor Dal 1kg", "category": "pulses"}
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)), \
+             patch("src.telegram_bot.get_item", return_value=item), \
+             patch("src.telegram_bot.state", mock_state):
+            from src.telegram_bot import remove_command
+            await remove_command(mock_update_allowed, mock_context)
+            text = mock_update_allowed.message.reply_text.call_args[0][0]
+            assert "#3" in text
+            assert "Toor Dal 1kg" in text
+            assert "yes" in text.lower()
+            assert mock_state[allowed_user_id]["step"] == "awaiting_remove_confirm"
+            assert mock_state[allowed_user_id]["item_id"] == 3
+
+    @pytest.mark.asyncio
+    async def test_remove_invalid_id_not_number(self, mock_update_allowed, mock_context, allowed_user_id):
+        mock_update_allowed.message.text = "/remove abc"
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)):
+            from src.telegram_bot import remove_command
+            await remove_command(mock_update_allowed, mock_context)
+            text = mock_update_allowed.message.reply_text.call_args[0][0]
+            assert "Invalid" in text
+
+    @pytest.mark.asyncio
+    async def test_remove_id_not_found(self, mock_update_allowed, mock_context, allowed_user_id):
+        mock_update_allowed.message.text = "/remove 999"
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)), \
+             patch("src.telegram_bot.get_item", return_value=None):
+            from src.telegram_bot import remove_command
+            await remove_command(mock_update_allowed, mock_context)
+            text = mock_update_allowed.message.reply_text.call_args[0][0]
+            assert "not found" in text.lower()
+
+    @pytest.mark.asyncio
+    async def test_remove_no_id(self, mock_update_allowed, mock_context, allowed_user_id):
+        mock_update_allowed.message.text = "/remove"
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)):
+            from src.telegram_bot import remove_command
+            await remove_command(mock_update_allowed, mock_context)
+            text = mock_update_allowed.message.reply_text.call_args[0][0]
+            assert "Usage" in text
+
+    @pytest.mark.asyncio
+    async def test_remove_stranger_ignored(self, mock_update_stranger, mock_context, allowed_user_id):
+        mock_update_stranger.message.text = "/remove 1"
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)):
+            from src.telegram_bot import remove_command
+            await remove_command(mock_update_stranger, mock_context)
+            mock_update_stranger.message.reply_text.assert_not_called()
+
+
+class TestRemoveConfirmFlow:
+    @pytest.mark.asyncio
+    async def test_confirm_yes_removes(self, mock_update_allowed, mock_context, allowed_user_id):
+        mock_update_allowed.message.text = "yes"
+        mock_state = {allowed_user_id: {"step": "awaiting_remove_confirm", "item_id": 3}}
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)), \
+             patch("src.telegram_bot.remove_item", return_value=True) as mock_rm, \
+             patch("src.telegram_bot.state", mock_state):
+            from src.telegram_bot import on_text_message
+            await on_text_message(mock_update_allowed, mock_context)
+            mock_rm.assert_called_once()
+            text = mock_update_allowed.message.reply_text.call_args[0][0]
+            assert "Removed" in text
+            assert allowed_user_id not in mock_state
+
+    @pytest.mark.asyncio
+    async def test_confirm_yes_case_insensitive(self, mock_update_allowed, mock_context, allowed_user_id):
+        mock_update_allowed.message.text = "  YES  "
+        mock_state = {allowed_user_id: {"step": "awaiting_remove_confirm", "item_id": 3}}
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)), \
+             patch("src.telegram_bot.remove_item", return_value=True), \
+             patch("src.telegram_bot.state", mock_state):
+            from src.telegram_bot import on_text_message
+            await on_text_message(mock_update_allowed, mock_context)
+            text = mock_update_allowed.message.reply_text.call_args[0][0]
+            assert "Removed" in text
+
+    @pytest.mark.asyncio
+    async def test_confirm_no_cancels(self, mock_update_allowed, mock_context, allowed_user_id):
+        mock_update_allowed.message.text = "no"
+        mock_state = {allowed_user_id: {"step": "awaiting_remove_confirm", "item_id": 3}}
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)), \
+             patch("src.telegram_bot.state", mock_state):
+            from src.telegram_bot import on_text_message
+            await on_text_message(mock_update_allowed, mock_context)
+            text = mock_update_allowed.message.reply_text.call_args[0][0]
+            assert "cancelled" in text.lower()
+            assert allowed_user_id not in mock_state
+
+    @pytest.mark.asyncio
+    async def test_confirm_random_text_cancels(self, mock_update_allowed, mock_context, allowed_user_id):
+        mock_update_allowed.message.text = "maybe later"
+        mock_state = {allowed_user_id: {"step": "awaiting_remove_confirm", "item_id": 3}}
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)), \
+             patch("src.telegram_bot.state", mock_state):
+            from src.telegram_bot import on_text_message
+            await on_text_message(mock_update_allowed, mock_context)
+            text = mock_update_allowed.message.reply_text.call_args[0][0]
+            assert "cancelled" in text.lower()
+            assert allowed_user_id not in mock_state
