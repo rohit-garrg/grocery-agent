@@ -192,4 +192,31 @@ Both are required. The settings.json covers interactive use. The `--allowedTools
 
 *(This section is updated manually after Phase D7 end-to-end testing.)*
 
-- (Empty at project start.)
+**Status:** Awaiting manual execution. Code review completed — no blocking issues found.
+
+**Prerequisites before running:**
+1. Add 5+ items to `master_list.json` via `/add` command or direct JSON edit (list is currently empty).
+   Mix should include: items available on both platforms, at least one item available on only one platform, and at least one with a brand constraint.
+2. Ensure browser profile has active Amazon Prime and Blinkit sessions (`setup_browser.sh` or manual login).
+3. Set `TELEGRAM_TOKEN`, `ALLOWED_USER_ID`, `BROWSER_PROFILE_PATH`, `PINCODE` in `.env`.
+4. Start the bot: `python3 src/telegram_bot.py`.
+
+**Test checklist:**
+- [ ] `/compare` displays master list grouped by category
+- [ ] Valid selection (e.g., `1x2,3,4,5`) is acknowledged with "Fetching prices for N items..."
+- [ ] Invalid selection shows error and allows re-entry
+- [ ] Full formatted output appears in Telegram (comparison table + recommended split + totals)
+- [ ] Spot-check 2 prices against live Amazon/Blinkit pages
+- [ ] Run log created in `logs/run_YYYYMMDD_HHMMSS.json` with correct structure
+- [ ] Price history appended to `price_history/prices.jsonl`
+- [ ] Items unavailable on one platform show "N/A" in comparison table
+- [ ] Session expiry warning appears if a platform session is invalid
+- [ ] Message splitting works if output exceeds 4096 chars (test with 10+ items)
+- [ ] Concurrent `/compare` while one is running shows "already running" message
+
+**Code review notes (D7 prep):**
+- Pipeline wiring (telegram_bot → agent.sh → claude -p → orchestrator) is consistent.
+- Lock mechanism uses atomic `mkdir` in agent.sh with `os.path.isdir()` pre-check in telegram_bot.py.
+- `agent.sh` only grants `Bash` tool to `claude -p`, matching agent_prompt.md's single-command design.
+- Session expiry propagation path: scraper → `_scrape_platform()` → orchestrator output → Telegram message verified in code.
+- Logging calls happen in `finally`-equivalent position (after format, before return) and are wrapped in try/except to never break the pipeline.
