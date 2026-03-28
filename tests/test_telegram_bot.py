@@ -1,5 +1,6 @@
 """Tests for telegram_bot.py core functionality."""
 
+import subprocess
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -143,3 +144,230 @@ class TestMain:
             from src.telegram_bot import main
             with pytest.raises(RuntimeError, match="numeric"):
                 main()
+
+
+# --- B2: /compare and selection flow ---
+
+
+class TestFormatMasterList:
+    def test_empty_list(self):
+        from src.telegram_bot import _format_master_list
+        result = _format_master_list([])
+        assert "empty" in result.lower()
+        assert "/add" in result
+
+    def test_grouped_by_category(self):
+        from src.telegram_bot import _format_master_list
+        items = [
+            {"id": 1, "name": "Toor Dal 1kg", "category": "pulses"},
+            {"id": 2, "name": "Moong Dal 1kg", "category": "pulses"},
+            {"id": 3, "name": "Amul Butter 500g", "category": "dairy"},
+        ]
+        result = _format_master_list(items)
+        assert "Pulses" in result
+        assert "Dairy" in result
+        assert "1. Toor Dal 1kg" in result
+        assert "2. Moong Dal 1kg" in result
+        assert "3. Amul Butter 500g" in result
+
+    def test_includes_instructions(self):
+        from src.telegram_bot import _format_master_list
+        items = [{"id": 1, "name": "Test", "category": "test"}]
+        result = _format_master_list(items)
+        assert "Reply with item numbers" in result
+        assert "Nx format" in result
+        assert "Example:" in result
+
+    def test_uncategorized_default(self):
+        from src.telegram_bot import _format_master_list
+        items = [{"id": 1, "name": "Misc Item"}]
+        result = _format_master_list(items)
+        assert "Uncategorized" in result
+        assert "1. Misc Item" in result
+
+
+class TestCompareCommand:
+    @pytest.mark.asyncio
+    async def test_shows_formatted_list(self, mock_update_allowed, mock_context, allowed_user_id):
+        items = [
+            {"id": 1, "name": "Toor Dal", "category": "pulses"},
+            {"id": 2, "name": "Butter", "category": "dairy"},
+        ]
+        mock_state = {}
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)), \
+             patch("src.telegram_bot.load_list", return_value=items), \
+             patch("src.telegram_bot.state", mock_state):
+            from src.telegram_bot import compare_command
+            await compare_command(mock_update_allowed, mock_context)
+            text = mock_update_allowed.message.reply_text.call_args[0][0]
+            assert "Toor Dal" in text
+            assert "Butter" in text
+
+    @pytest.mark.asyncio
+    async def test_sets_awaiting_state(self, mock_update_allowed, mock_context, allowed_user_id):
+        items = [{"id": 1, "name": "Item", "category": "test"}]
+        mock_state = {}
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)), \
+             patch("src.telegram_bot.load_list", return_value=items), \
+             patch("src.telegram_bot.state", mock_state):
+            from src.telegram_bot import compare_command
+            await compare_command(mock_update_allowed, mock_context)
+            assert mock_state[allowed_user_id] == {"step": "awaiting_selection"}
+
+    @pytest.mark.asyncio
+    async def test_empty_list(self, mock_update_allowed, mock_context, allowed_user_id):
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)), \
+             patch("src.telegram_bot.load_list", return_value=[]):
+            from src.telegram_bot import compare_command
+            await compare_command(mock_update_allowed, mock_context)
+            text = mock_update_allowed.message.reply_text.call_args[0][0]
+            assert "empty" in text.lower()
+
+    @pytest.mark.asyncio
+    async def test_stranger_ignored(self, mock_update_stranger, mock_context, allowed_user_id):
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)):
+            from src.telegram_bot import compare_command
+            await compare_command(mock_update_stranger, mock_context)
+            mock_update_stranger.message.reply_text.assert_not_called()
+
+
+class TestSelectionFlow:
+    @pytest.mark.asyncio
+    async def test_valid_selection_acknowledged(self, mock_update_allowed, mock_context, allowed_user_id):
+        items = [
+            {"id": 1, "name": "Toor Dal", "category": "pulses"},
+            {"id": 2, "name": "Butter", "category": "dairy"},
+        ]
+        mock_update_allowed.message.text = "1x2,2"
+        mock_state = {allowed_user_id: {"step": "awaiting_selection"}}
+        mock_result = MagicMock()
+        mock_result.stdout = "Comparison output"
+        mock_result.stderr = ""
+
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)), \
+             patch("src.telegram_bot.load_list", return_value=items), \
+             patch("src.telegram_bot.state", mock_state), \
+             patch("src.telegram_bot._call_agent", new_callable=AsyncMock, return_value=mock_result):
+            from src.telegram_bot import on_text_message
+            await on_text_message(mock_update_allowed, mock_context)
+            calls = mock_update_allowed.message.reply_text.call_args_list
+            ack = calls[0][0][0]
+            assert "Got it" in ack
+            assert "2 items" in ack
+
+    @pytest.mark.asyncio
+    async def test_agent_output_sent(self, mock_update_allowed, mock_context, allowed_user_id):
+        items = [{"id": 1, "name": "Item", "category": "test"}]
+        mock_update_allowed.message.text = "1"
+        mock_state = {allowed_user_id: {"step": "awaiting_selection"}}
+        mock_result = MagicMock()
+        mock_result.stdout = "Price comparison result here"
+        mock_result.stderr = ""
+
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)), \
+             patch("src.telegram_bot.load_list", return_value=items), \
+             patch("src.telegram_bot.state", mock_state), \
+             patch("src.telegram_bot._call_agent", new_callable=AsyncMock, return_value=mock_result):
+            from src.telegram_bot import on_text_message
+            await on_text_message(mock_update_allowed, mock_context)
+            calls = mock_update_allowed.message.reply_text.call_args_list
+            output = calls[1][0][0]
+            assert "Price comparison result here" in output
+
+    @pytest.mark.asyncio
+    async def test_invalid_selection_error(self, mock_update_allowed, mock_context, allowed_user_id):
+        items = [{"id": 1, "name": "Item", "category": "test"}]
+        mock_update_allowed.message.text = "abc"
+        mock_state = {allowed_user_id: {"step": "awaiting_selection"}}
+
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)), \
+             patch("src.telegram_bot.load_list", return_value=items), \
+             patch("src.telegram_bot.state", mock_state):
+            from src.telegram_bot import on_text_message
+            await on_text_message(mock_update_allowed, mock_context)
+            text = mock_update_allowed.message.reply_text.call_args[0][0]
+            assert "Invalid selection" in text
+            assert "try again" in text.lower()
+            assert mock_state[allowed_user_id]["step"] == "awaiting_selection"
+
+    @pytest.mark.asyncio
+    async def test_retry_after_invalid(self, mock_update_allowed, mock_context, allowed_user_id):
+        items = [{"id": 1, "name": "Item", "category": "test"}]
+        mock_state = {allowed_user_id: {"step": "awaiting_selection"}}
+
+        # First: invalid input
+        mock_update_allowed.message.text = "abc"
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)), \
+             patch("src.telegram_bot.load_list", return_value=items), \
+             patch("src.telegram_bot.state", mock_state):
+            from src.telegram_bot import on_text_message
+            await on_text_message(mock_update_allowed, mock_context)
+        assert mock_state[allowed_user_id]["step"] == "awaiting_selection"
+
+        # Second: valid input
+        mock_update_allowed.message.text = "1"
+        mock_update_allowed.message.reply_text.reset_mock()
+        mock_result = MagicMock()
+        mock_result.stdout = "Result"
+        mock_result.stderr = ""
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)), \
+             patch("src.telegram_bot.load_list", return_value=items), \
+             patch("src.telegram_bot.state", mock_state), \
+             patch("src.telegram_bot._call_agent", new_callable=AsyncMock, return_value=mock_result):
+            await on_text_message(mock_update_allowed, mock_context)
+            ack = mock_update_allowed.message.reply_text.call_args_list[0][0][0]
+            assert "Got it" in ack
+
+    @pytest.mark.asyncio
+    async def test_state_cleared_after_comparison(self, mock_update_allowed, mock_context, allowed_user_id):
+        items = [{"id": 1, "name": "Item", "category": "test"}]
+        mock_update_allowed.message.text = "1"
+        mock_state = {allowed_user_id: {"step": "awaiting_selection"}}
+        mock_result = MagicMock()
+        mock_result.stdout = "Result"
+        mock_result.stderr = ""
+
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)), \
+             patch("src.telegram_bot.load_list", return_value=items), \
+             patch("src.telegram_bot.state", mock_state), \
+             patch("src.telegram_bot._call_agent", new_callable=AsyncMock, return_value=mock_result):
+            from src.telegram_bot import on_text_message
+            await on_text_message(mock_update_allowed, mock_context)
+            assert allowed_user_id not in mock_state
+
+    @pytest.mark.asyncio
+    async def test_timeout_handled(self, mock_update_allowed, mock_context, allowed_user_id):
+        items = [{"id": 1, "name": "Item", "category": "test"}]
+        mock_update_allowed.message.text = "1"
+        mock_state = {allowed_user_id: {"step": "awaiting_selection"}}
+
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)), \
+             patch("src.telegram_bot.load_list", return_value=items), \
+             patch("src.telegram_bot.state", mock_state), \
+             patch("src.telegram_bot._call_agent", new_callable=AsyncMock,
+                   side_effect=subprocess.TimeoutExpired("cmd", 600)):
+            from src.telegram_bot import on_text_message
+            await on_text_message(mock_update_allowed, mock_context)
+            calls = mock_update_allowed.message.reply_text.call_args_list
+            timeout_msg = calls[1][0][0]
+            assert "timed out" in timeout_msg.lower()
+            assert allowed_user_id not in mock_state
+
+    @pytest.mark.asyncio
+    async def test_no_output_handled(self, mock_update_allowed, mock_context, allowed_user_id):
+        items = [{"id": 1, "name": "Item", "category": "test"}]
+        mock_update_allowed.message.text = "1"
+        mock_state = {allowed_user_id: {"step": "awaiting_selection"}}
+        mock_result = MagicMock()
+        mock_result.stdout = ""
+        mock_result.stderr = "agent.sh: No such file"
+
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)), \
+             patch("src.telegram_bot.load_list", return_value=items), \
+             patch("src.telegram_bot.state", mock_state), \
+             patch("src.telegram_bot._call_agent", new_callable=AsyncMock, return_value=mock_result):
+            from src.telegram_bot import on_text_message
+            await on_text_message(mock_update_allowed, mock_context)
+            calls = mock_update_allowed.message.reply_text.call_args_list
+            error_msg = calls[1][0][0]
+            assert "No output" in error_msg
