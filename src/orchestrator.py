@@ -6,6 +6,8 @@ Exits 0 on success, 1 on total failure (no platforms available).
 
 import os
 import sys
+import time
+from datetime import datetime
 
 from dotenv import load_dotenv
 
@@ -20,10 +22,13 @@ from formatter import format_comparison, format_unavailable, split_message
 
 import scraper_amazon
 import scraper_blinkit
+from logger import log_run, log_prices
 
 MASTER_LIST_PATH = os.path.join(os.path.dirname(__file__), "..", "master_list.json")
 BROWSER_PROFILE_PATH = os.environ.get("BROWSER_PROFILE_PATH", "browser_profile")
 PINCODE = os.environ.get("PINCODE", "122001")
+LOG_DIR = os.path.join(os.path.dirname(__file__), "..", "logs")
+PRICE_HISTORY_DIR = os.path.join(os.path.dirname(__file__), "..", "price_history")
 
 DEFAULT_FEES = {
     "amazon": {
@@ -119,6 +124,67 @@ def _scrape_platform(platform, page, items, pincode):
     return prices, fees, errors
 
 
+def _log_all(selection, selected_items, platform_results, platform_fees,
+             platform_errors, session_warnings, optimizer_result, start_time):
+    """Log run data and price history. Never raises — errors are swallowed."""
+    try:
+        duration = round(time.time() - start_time)
+        timestamp = datetime.now().isoformat()
+
+        # Build platform status for run log
+        platforms_log = {}
+        for platform in ("amazon", "blinkit"):
+            prices = platform_results.get(platform, {})
+            fees = platform_fees.get(platform, {})
+            if fees.get("status") == "session_expired":
+                platforms_log[platform] = {"status": "session_expired"}
+            else:
+                found = sum(1 for v in prices.values() if v is not None)
+                not_found = sum(1 for v in prices.values() if v is None)
+                platforms_log[platform] = {
+                    "status": "success",
+                    "items_found": found,
+                    "items_not_found": not_found,
+                    "fees": fees,
+                    "session_valid": True,
+                }
+
+        run_data = {
+            "timestamp": timestamp,
+            "selected_items": [{"id": s["id"], "qty": s["qty"]} for s in selection],
+            "platforms": platforms_log,
+            "recommendation": optimizer_result.get("recommendation", {}) if optimizer_result else {},
+            "total_cost": optimizer_result.get("combined_total", 0) if optimizer_result else 0,
+            "run_duration_seconds": duration,
+        }
+        log_run(os.path.abspath(LOG_DIR), run_data)
+
+        # Build price history records
+        price_items = []
+        for item in selected_items:
+            amazon_data = platform_results.get("amazon", {}).get(item["id"])
+            blinkit_data = platform_results.get("blinkit", {}).get(item["id"])
+
+            record = {"id": item["id"], "name": item["name"],
+                      "amazon": amazon_data, "blinkit": blinkit_data}
+
+            # Determine status for unavailable platforms
+            amazon_fees = platform_fees.get("amazon", {})
+            if amazon_data is None:
+                record["amazon_status"] = "session_expired" if amazon_fees.get("status") == "session_expired" else "unavailable"
+
+            blinkit_fees = platform_fees.get("blinkit", {})
+            if blinkit_data is None:
+                record["blinkit_status"] = "session_expired" if blinkit_fees.get("status") == "session_expired" else "unavailable"
+
+            price_items.append(record)
+
+        log_prices(os.path.abspath(PRICE_HISTORY_DIR), price_items)
+    except Exception:
+        # Logging must never break the pipeline
+        pass
+
+
 def run_comparison(selection_string):
     """Run the full comparison pipeline.
 
@@ -129,6 +195,8 @@ def run_comparison(selection_string):
         (output_text, exit_code) where output_text is the formatted result string
         and exit_code is 0 on success, 1 on total failure.
     """
+    start_time = time.time()
+
     # Step 1: Parse selection and load master list
     master_list = load_list(os.path.abspath(MASTER_LIST_PATH))
     valid_ids = [item["id"] for item in master_list]
@@ -197,6 +265,8 @@ def run_comparison(selection_string):
             for p, errs in platform_errors.items():
                 for err in errs:
                     output_parts.append(err)
+            _log_all(selection, selected_items, platform_results, platform_fees,
+                     platform_errors, session_warnings, None, start_time)
             return "\n".join(output_parts), 1
 
         # Step 5: Compile price data for optimizer
@@ -224,6 +294,8 @@ def run_comparison(selection_string):
         if optimizer_items:
             result = optimize_cart(optimizer_items, platform_fees)
         else:
+            _log_all(selection, selected_items, platform_results, platform_fees,
+                     platform_errors, session_warnings, None, start_time)
             return "No items could be found on any platform.", 1
 
         # Step 7: Format output
@@ -242,8 +314,9 @@ def run_comparison(selection_string):
         # Step 8: Split for Telegram and output
         messages = split_message(output)
 
-        # Step 9: Logging (wired in D5 when logger.py is created)
-        # log_run() and log_prices() will be called here
+        # Step 9: Logging
+        _log_all(selection, selected_items, platform_results, platform_fees,
+                 platform_errors, session_warnings, result, start_time)
 
         return "\n---\n".join(messages), 0
 
