@@ -67,10 +67,6 @@ def set_location(page, pincode):
                 time.sleep(1)
                 break
 
-        if not clicked:
-            # Location modal may already be open on first visit
-            pass
-
         # Look for pincode/search input in the modal
         input_selectors = [
             "input[placeholder*='area']",
@@ -332,7 +328,7 @@ def extract_results(page):
 def _extract_brand(card, product_name):
     """Try to extract brand name from a Blinkit product card.
 
-    Falls back to inferring brand from the first word(s) of the product name.
+    Returns empty string if no brand-specific element is found.
     """
     # Try brand-specific selectors
     brand_selectors = [

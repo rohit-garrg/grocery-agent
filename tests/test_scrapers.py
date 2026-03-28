@@ -23,7 +23,7 @@ PROFILE_PATH = os.environ.get("BROWSER_PROFILE_PATH", "browser_profile")
 
 @pytest.fixture(scope="module")
 def browser():
-    """Shared browser context for all Amazon integration tests."""
+    """Shared browser context for all integration tests."""
     context, pw = get_browser_context(PROFILE_PATH)
     yield context, pw
     close_context(context, pw)
