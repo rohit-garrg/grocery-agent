@@ -22,16 +22,13 @@ state = {}
 
 HELP_TEXT = (
     "Available commands:\n"
-    "/compare — Compare prices across Amazon and Blinkit\n"
-    "/add <name> — Add an item to the master list\n"
-    "/remove <id> — Remove an item from the master list\n"
     "/help — Show this help message"
 )
 
 
 def is_allowed_user(update: Update) -> bool:
     """Check if the message is from the allowed user."""
-    if not ALLOWED_USER_ID:
+    if not ALLOWED_USER_ID or not update.effective_user:
         return False
     return update.effective_user.id == int(ALLOWED_USER_ID)
 
@@ -57,7 +54,7 @@ async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await update.message.reply_text(f"Unknown command.\n\n{HELP_TEXT}")
 
 
-async def plain_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def on_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle plain text messages (for conversation state flows)."""
     if not is_allowed_user(update):
         return
@@ -74,6 +71,10 @@ def main() -> None:
         raise RuntimeError("TELEGRAM_TOKEN not set in environment")
     if not ALLOWED_USER_ID:
         raise RuntimeError("ALLOWED_USER_ID not set in environment")
+    try:
+        int(ALLOWED_USER_ID)
+    except ValueError:
+        raise RuntimeError(f"ALLOWED_USER_ID must be a numeric user ID, got: {ALLOWED_USER_ID!r}")
 
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
@@ -82,7 +83,7 @@ def main() -> None:
     # Catch-all for unrecognized commands
     app.add_handler(MessageHandler(filters.COMMAND, unknown_command))
     # Plain text messages (for state-based flows like selection, confirmation)
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, plain_message))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text_message))
 
     app.run_polling()
 

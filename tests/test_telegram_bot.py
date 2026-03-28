@@ -57,9 +57,6 @@ class TestHelpCommand:
             await help_command(mock_update_allowed, mock_context)
             mock_update_allowed.message.reply_text.assert_called_once()
             text = mock_update_allowed.message.reply_text.call_args[0][0]
-            assert "/compare" in text
-            assert "/add" in text
-            assert "/remove" in text
             assert "/help" in text
 
     @pytest.mark.asyncio
@@ -106,22 +103,22 @@ class TestUnknownCommand:
             mock_update_stranger.message.reply_text.assert_not_called()
 
 
-class TestPlainMessage:
+class TestOnTextMessage:
     @pytest.mark.asyncio
-    async def test_plain_message_no_state(self, mock_update_allowed, mock_context, allowed_user_id):
+    async def test_no_state_prompts_compare(self, mock_update_allowed, mock_context, allowed_user_id):
         with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)), \
              patch("src.telegram_bot.state", {}):
-            from src.telegram_bot import plain_message
-            await plain_message(mock_update_allowed, mock_context)
+            from src.telegram_bot import on_text_message
+            await on_text_message(mock_update_allowed, mock_context)
             mock_update_allowed.message.reply_text.assert_called_once()
             text = mock_update_allowed.message.reply_text.call_args[0][0]
             assert "/compare" in text
 
     @pytest.mark.asyncio
-    async def test_plain_message_stranger_ignored(self, mock_update_stranger, mock_context, allowed_user_id):
+    async def test_stranger_ignored(self, mock_update_stranger, mock_context, allowed_user_id):
         with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)):
-            from src.telegram_bot import plain_message
-            await plain_message(mock_update_stranger, mock_context)
+            from src.telegram_bot import on_text_message
+            await on_text_message(mock_update_stranger, mock_context)
             mock_update_stranger.message.reply_text.assert_not_called()
 
 
@@ -138,4 +135,11 @@ class TestMain:
              patch("src.telegram_bot.ALLOWED_USER_ID", None):
             from src.telegram_bot import main
             with pytest.raises(RuntimeError, match="ALLOWED_USER_ID"):
+                main()
+
+    def test_invalid_user_id_raises(self):
+        with patch("src.telegram_bot.TELEGRAM_TOKEN", "fake-token"), \
+             patch("src.telegram_bot.ALLOWED_USER_ID", "not-a-number"):
+            from src.telegram_bot import main
+            with pytest.raises(RuntimeError, match="numeric"):
                 main()
