@@ -49,7 +49,7 @@ MAX_ITERATIONS=$1
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG_FILE="$PROJECT_DIR/ralph.log"
 TIMEOUT_SECONDS=900   # 15 minutes per implementation pass
-REVIEW_TIMEOUT=600    # 10 minutes per review pass
+REVIEW_TIMEOUT=900    # 15 minutes per review pass
 
 # Review pass runs on Sonnet (faster, cheaper, different perspective from implementation model)
 REVIEW_MODEL="claude-sonnet-4-6"
@@ -120,6 +120,7 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
   # ── Pass 1: Implementation ──────────────────────────────────────────────
 
   result=$($TIMEOUT_CMD "$TIMEOUT_SECONDS" claude -p "$(cat PROMPT.md)" \
+    --verbose \
     --allowedTools "Bash" "Read" "Write" "Edit" "MultiEdit" \
     --output-format text 2>&1) || {
     exit_code=$?
@@ -163,6 +164,7 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
     echo "--- Review pass for iteration $i ---" | tee -a "$LOG_FILE"
 
     review=$($TIMEOUT_CMD "$REVIEW_TIMEOUT" claude -p "$(cat REVIEW_PROMPT.md)" \
+      --verbose \
       --model "$REVIEW_MODEL" \
       --allowedTools "Bash" "Read" "Write" "Edit" "MultiEdit" "Task" "mcp__gemini__ask-gemini" "Agent(security-reviewer)" \
       --output-format text 2>&1) || {
