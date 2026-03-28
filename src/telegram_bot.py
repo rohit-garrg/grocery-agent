@@ -191,6 +191,10 @@ async def _handle_selection(update: Update, user_id: int) -> None:
         await update.message.reply_text(f"Error running comparison: {e}")
     finally:
         nudge_task.cancel()
+        try:
+            await nudge_task
+        except asyncio.CancelledError:
+            pass
         state.pop(user_id, None)
 
 
