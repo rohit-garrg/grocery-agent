@@ -32,6 +32,7 @@ MASTER_LIST_PATH = os.path.join(
     "master_list.json"
 )
 AGENT_SH_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent.sh")
+_LOCK_DIR = "/tmp/grocery-agent.lock"  # Must match agent.sh
 
 # In-memory conversation state keyed by user_id.
 # Stores current flow step and pending data. Lost on restart (acceptable per spec).
@@ -145,6 +146,13 @@ async def _handle_selection(update: Update, user_id: int) -> None:
         for p in parsed
     )
 
+    if os.path.isdir(_LOCK_DIR):
+        await update.message.reply_text(
+            "A comparison is already running. Please wait."
+        )
+        state.pop(user_id, None)
+        return
+
     await update.message.reply_text(
         f"Got it. Fetching prices for {n} items... (this takes 2-5 minutes)"
     )
@@ -154,7 +162,7 @@ async def _handle_selection(update: Update, user_id: int) -> None:
         output = result.stdout.strip()
         if output == "LOCKED":
             await update.message.reply_text(
-                "A comparison is already running. Please wait and try again in a few minutes."
+                "A comparison is already running. Please wait."
             )
         elif output:
             for chunk in split_message(output):

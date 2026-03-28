@@ -4,14 +4,20 @@ SELECTION="${1:?Selection argument required}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Concurrency guard
-LOCKFILE="/tmp/grocery-agent.lock"
-if [ -f "$LOCKFILE" ]; then
-  echo "LOCKED"
-  exit 0
+# Concurrency guard — mkdir is atomic on POSIX filesystems (no TOCTOU race)
+LOCKDIR="/tmp/grocery-agent.lock"
+if ! mkdir "$LOCKDIR" 2>/dev/null; then
+    # Check if the holding process is still alive (handles stale lock from SIGKILL/crash)
+    if [ -f "$LOCKDIR/pid" ] && kill -0 "$(cat "$LOCKDIR/pid")" 2>/dev/null; then
+        echo "LOCKED"
+        exit 0
+    fi
+    # Stale lock — owning process is gone; reclaim
+    rm -rf "$LOCKDIR"
+    mkdir "$LOCKDIR"
 fi
-trap 'rm -f "$LOCKFILE"' EXIT
-touch "$LOCKFILE"
+echo $$ > "$LOCKDIR/pid"
+trap 'rm -rf "$LOCKDIR"' EXIT
 
 cd "$PROJECT_ROOT"
 

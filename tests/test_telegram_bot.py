@@ -354,6 +354,24 @@ class TestSelectionFlow:
             assert allowed_user_id not in mock_state
 
     @pytest.mark.asyncio
+    async def test_preflight_lockdir_blocks_before_got_it(self, mock_update_allowed, mock_context, allowed_user_id):
+        """Lockdir present before agent is called → sends 'already running' without 'Got it' first."""
+        items = [{"id": 1, "name": "Item", "category": "test"}]
+        mock_update_allowed.message.text = "1"
+        mock_state = {allowed_user_id: {"step": "awaiting_selection"}}
+
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)), \
+             patch("src.telegram_bot.load_list", return_value=items), \
+             patch("src.telegram_bot.state", mock_state), \
+             patch("os.path.isdir", side_effect=lambda p: p == "/tmp/grocery-agent.lock"):
+            from src.telegram_bot import on_text_message
+            await on_text_message(mock_update_allowed, mock_context)
+            calls = mock_update_allowed.message.reply_text.call_args_list
+            assert len(calls) == 1
+            assert "already running" in calls[0][0][0].lower()
+            assert allowed_user_id not in mock_state
+
+    @pytest.mark.asyncio
     async def test_locked_output_handled(self, mock_update_allowed, mock_context, allowed_user_id):
         items = [{"id": 1, "name": "Item", "category": "test"}]
         mock_update_allowed.message.text = "1"
