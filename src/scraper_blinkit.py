@@ -135,9 +135,10 @@ def set_location(page, pincode):
     except Exception:
         pass
 
-    # If we can't verify but didn't error, assume success (location may have been set
-    # but UI doesn't show pincode text explicitly)
-    return True
+    raise RuntimeError(
+        f"Could not verify pincode {pincode} was set on Blinkit — "
+        "location widget may have changed structure"
+    )
 
 
 def dismiss_modals(page):
@@ -274,14 +275,10 @@ def extract_results(page):
                         break
 
             if not name:
-                # Try getting any text from the card as a fallback
-                text_parts = (card.text_content(timeout=1000) or "").strip()
-                if text_parts:
-                    # Take the first meaningful line
-                    lines = [l.strip() for l in text_parts.split("\n") if l.strip()]
-                    name = lines[0] if lines else ""
-                if not name:
-                    continue
+                # No name selector matched — skip this card rather than fall
+                # back to raw card text (which often starts with discount badges
+                # like "60% OFF" rather than the product name).
+                continue
 
             # Extract price
             price_selectors = [
@@ -350,20 +347,9 @@ def _extract_brand(card, product_name):
             if text:
                 return text
 
-    # Infer brand from product name — common pattern is "Brand Product Weight"
-    # e.g., "Tata Toor Dal 1 kg" → brand is "Tata"
-    # This is a best-effort heuristic
-    if product_name:
-        words = product_name.split()
-        if words:
-            # First word is often the brand (if it's not a generic descriptor)
-            generic_words = {
-                "organic", "fresh", "premium", "natural", "pure", "best",
-                "extra", "double", "triple", "raw", "refined",
-            }
-            if words[0].lower() not in generic_words:
-                return words[0]
-
+    # No brand selector matched — return empty string rather than guess from
+    # product name (first-word inference produces wrong results for multi-word
+    # brands like "Mother Dairy" or adjectives like "Low Fat").
     return ""
 
 
@@ -384,12 +370,11 @@ def discover_fees_blinkit(page):
         "cashback_tiers": [],
     }
 
-    # First, try to read fees from the current page
-    found_fees = _read_fees_from_page(page, fees)
-    if found_fees:
-        return fees
+    # Read fees from current page first (e.g., search results banners)
+    _read_fees_from_page(page, fees)
 
-    # Fallback: navigate to empty cart page to read fee structure
+    # Always also check the cart page — it's the most authoritative source for
+    # fee structure and may have fields that were absent on the current page.
     try:
         current_url = page.url
         page.goto("https://blinkit.com/cart", wait_until="domcontentloaded", timeout=15000)
