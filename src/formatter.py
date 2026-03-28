@@ -39,7 +39,7 @@ def _build_comparison_table(item_details):
     amz_w = max(len("Amazon"), *(len(r["amazon"]) for r in rows))
     blk_w = max(len("Blinkit"), *(len(r["blinkit"]) for r in rows))
 
-    def row_line(c1, c2, c3, c4, sep_l, sep_m, sep_r, fill):
+    def separator(sep_l, sep_m, sep_r, fill):
         return (f"{sep_l}{fill * (name_w + 2)}{sep_m}{fill * (qty_w + 2)}"
                 f"{sep_m}{fill * (amz_w + 2)}{sep_m}{fill * (blk_w + 2)}{sep_r}")
 
@@ -47,18 +47,18 @@ def _build_comparison_table(item_details):
         return f"│ {c1:<{name_w}} │ {c2:<{qty_w}} │ {c3:<{amz_w}} │ {c4:<{blk_w}} │"
 
     lines = ["ITEM COMPARISON:"]
-    lines.append(row_line("", "", "", "", "┌", "┬", "┐", "─"))
+    lines.append(separator("┌", "┬", "┐", "─"))
     lines.append(data_line("Item", "Qty", "Amazon", "Blinkit"))
-    lines.append(row_line("", "", "", "", "├", "┼", "┤", "─"))
+    lines.append(separator("├", "┼", "┤", "─"))
 
     for i, r in enumerate(rows):
         lines.append(data_line(r["name"], r["qty"], r["amazon"], r["blinkit"]))
         if r["brand"]:
             lines.append(data_line(f"({r['brand']})", "", "", ""))
         if i < len(rows) - 1:
-            lines.append(row_line("", "", "", "", "├", "┼", "┤", "─"))
+            lines.append(separator("├", "┼", "┤", "─"))
 
-    lines.append(row_line("", "", "", "", "└", "┴", "┘", "─"))
+    lines.append(separator("└", "┴", "┘", "─"))
     return "\n".join(lines)
 
 

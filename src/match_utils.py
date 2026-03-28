@@ -64,7 +64,7 @@ def find_best_match(candidates, query, brand_constraint=None):
     if not candidates:
         return None
 
-    query_original_tokens, query_token_set = _normalize_tokens(query)
+    query_original_tokens, _ = _normalize_tokens(query)
 
     if not query_original_tokens:
         return None
