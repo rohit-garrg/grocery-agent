@@ -175,45 +175,19 @@ def dismiss_modals(page):
 
 
 def search_items(page, query):
-    """Search for items on Blinkit.
+    """Search for items on Blinkit via direct URL navigation.
 
-    Uses the search bar to enter query and wait for results.
     Raises RuntimeError if session has expired.
     """
     if _check_session_expired(page):
         raise RuntimeError("Blinkit session expired — please re-login in the browser profile.")
 
+    import urllib.parse
+    encoded = urllib.parse.quote(query)
+    page.goto(f"https://blinkit.com/s/?q={encoded}", wait_until="domcontentloaded", timeout=30000)
+    time.sleep(3)
+
     dismiss_modals(page)
-
-    # Find and use the search bar
-    search_selectors = [
-        "input[placeholder*='Search']",
-        "input[placeholder*='search']",
-        "input[type='search']",
-        "input[class*='SearchBar']",
-        "input[class*='search']",
-        "[data-testid='search-input']",
-    ]
-
-    search_input = None
-    for selector in search_selectors:
-        inp = page.locator(selector)
-        if inp.count() > 0:
-            search_input = inp.first
-            break
-
-    if search_input is None:
-        raise RuntimeError("Could not find Blinkit search bar")
-
-    search_input.fill("", timeout=5000)
-    search_input.fill(query)
-    time.sleep(1)
-
-    # Submit search — press Enter or click search button
-    search_input.press("Enter")
-
-    page.wait_for_load_state("domcontentloaded", timeout=30000)
-    time.sleep(2)
 
     if _check_session_expired(page):
         raise RuntimeError("Blinkit session expired — please re-login in the browser profile.")
@@ -226,14 +200,12 @@ def extract_results(page):
     """
     results = []
 
-    # Blinkit product card selectors — try multiple patterns
+    # Blinkit product card selectors — Tailwind-based (new) then styled-components (old)
     card_selectors = [
+        "div[role='button']",
         "div[class*='Product__UpdatedPlpProductContainer']",
         "div[class*='ProductCard']",
         "a[class*='Product']",
-        "div[data-testid='plp-product']",
-        "[class*='product-card']",
-        "div[class*='plp-product']",
     ]
 
     result_cards = None
@@ -252,13 +224,12 @@ def extract_results(page):
         try:
             card = result_cards.nth(i)
 
-            # Extract product name
+            # Extract product name — Tailwind selectors first, then old fallbacks
             name_selectors = [
+                "div.tw-text-300.tw-font-semibold.tw-line-clamp-2",
+                "div[class*='tw-line-clamp-2'][class*='tw-font-semibold']",
                 "div[class*='Product__UpdatedTitle']",
                 "[class*='ProductName']",
-                "[class*='product-name']",
-                "[class*='Title']",
-                "div[class*='name']",
             ]
             name = ""
             for sel in name_selectors:
@@ -269,25 +240,24 @@ def extract_results(page):
                         break
 
             if not name:
-                # No name selector matched — skip this card rather than fall
-                # back to raw card text (which often starts with discount badges
-                # like "60% OFF" rather than the product name).
                 continue
 
-            # Extract price
+            # Skip discount badge cards picked up by broad selectors
+            if name[0].isdigit() and "OFF" in name.upper():
+                continue
+
+            # Extract price — Tailwind selectors first, then old fallbacks
             price_selectors = [
-                "div[class*='Product__UpdatedPriceAndAtcRow'] div[class*='Price']",
+                "div.tw-text-200.tw-font-semibold",
                 "[class*='ProductPrice']",
                 "[class*='product-price']",
                 "[class*='price']",
-                "span[class*='Price']",
             ]
             price = None
             for sel in price_selectors:
                 price_elem = card.locator(sel)
                 if price_elem.count() > 0:
                     price_text = (price_elem.first.text_content(timeout=1000) or "").strip()
-                    # Extract numeric price from text like "₹135" or "Rs. 135"
                     price_match = re.search(r'₹?\s*(\d[\d,.]*)', price_text)
                     if price_match:
                         try:
@@ -299,17 +269,22 @@ def extract_results(page):
             if price is None:
                 continue
 
-            # Extract brand — try brand-specific elements, else infer from name
-            brand = _extract_brand(card, name)
-
-            # Extract unit from the product name or weight text
+            # Extract unit — dedicated Tailwind element, then regex from name
             unit = ""
-            unit_match = re.search(
-                r'(\d+\s*(?:kg|g|ml|l|lb|oz|ltr|litre|liter|pack|pcs|pieces?))\b',
-                name, re.IGNORECASE,
-            )
-            if unit_match:
-                unit = unit_match.group(1).strip()
+            unit_elem = card.locator("div.tw-text-200.tw-font-medium.tw-line-clamp-1")
+            if unit_elem.count() > 0:
+                unit = (unit_elem.first.text_content(timeout=1000) or "").strip()
+
+            if not unit:
+                unit_match = re.search(
+                    r'(\d+\s*(?:kg|g|ml|l|lb|oz|ltr|litre|liter|pack|pcs|pieces?))\b',
+                    name, re.IGNORECASE,
+                )
+                if unit_match:
+                    unit = unit_match.group(1).strip()
+
+            # Extract brand
+            brand = _extract_brand(card, name)
 
             results.append({
                 "name": name,
@@ -326,9 +301,10 @@ def extract_results(page):
 def _extract_brand(card, product_name):
     """Try to extract brand name from a Blinkit product card.
 
-    Returns empty string if no brand-specific element is found.
+    Returns the product name as brand when no dedicated brand element exists,
+    enabling substring-based brand constraint matching in find_best_match.
     """
-    # Try brand-specific selectors
+    # Try brand-specific selectors first
     brand_selectors = [
         "[class*='Brand']",
         "[class*='brand']",
@@ -341,10 +317,8 @@ def _extract_brand(card, product_name):
             if text:
                 return text
 
-    # No brand selector matched — return empty string rather than guess from
-    # product name (first-word inference produces wrong results for multi-word
-    # brands like "Mother Dairy" or adjectives like "Low Fat").
-    return ""
+    # No dedicated brand element — use product name for substring matching
+    return product_name
 
 
 def discover_fees_blinkit(page):
@@ -378,7 +352,9 @@ def discover_fees_blinkit(page):
         if _check_session_expired(page):
             return {"status": "session_expired", "platform": "blinkit"}
 
-        _read_fees_from_page(page, fees)
+        # Only read fees if we're actually on the cart page (empty cart redirects to homepage)
+        if "/cart" in page.url:
+            _read_fees_from_page(page, fees)
 
         # Navigate back
         page.goto(current_url, wait_until="domcontentloaded", timeout=15000)

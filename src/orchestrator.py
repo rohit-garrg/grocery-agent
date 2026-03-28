@@ -5,6 +5,7 @@ Exits 0 on success, 1 on total failure (no platforms available).
 """
 
 import os
+import random
 import sys
 import time
 from datetime import datetime
@@ -123,6 +124,9 @@ def _scrape_platform(platform, page, items, pincode):
             prices[item["id"]] = None
             consecutive_failures += 1
 
+        # Anti-bot-detection: random delay between searches
+        time.sleep(random.uniform(2, 5))
+
     # Discover fees (with retry)
     try:
         if platform == "amazon":
@@ -209,6 +213,14 @@ def run_comparison(selection_string):
     """
     start_time = time.time()
 
+    # Daily run limit: safety throttle to prevent excessive automated requests
+    today = datetime.now().strftime("%Y%m%d")
+    log_dir_abs = os.path.abspath(LOG_DIR)
+    if os.path.isdir(log_dir_abs):
+        today_runs = [f for f in os.listdir(log_dir_abs) if f.startswith(f"run_{today}") and f.endswith(".json")]
+        if len(today_runs) >= 3:
+            return "Daily limit reached (3 comparisons per day). Try again tomorrow.", 0
+
     # Step 1: Parse selection and load master list
     master_list = load_list(os.path.abspath(MASTER_LIST_PATH))
     valid_ids = [item["id"] for item in master_list]
@@ -238,7 +250,12 @@ def run_comparison(selection_string):
         expired_platforms = set()
 
         # Step 3: Scrape each platform
-        for platform in ("amazon", "blinkit"):
+        platforms = ("amazon", "blinkit")
+        for idx, platform in enumerate(platforms):
+            # Anti-bot-detection: random delay between switching platforms
+            if idx > 0:
+                time.sleep(random.uniform(3, 8))
+
             page = context.new_page()
             try:
                 prices, fees, errors = _scrape_platform(platform, page, selected_items, PINCODE)

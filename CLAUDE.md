@@ -181,10 +181,14 @@ Both are required. The settings.json covers interactive use. The `--allowedTools
 *(This section is updated by Claude Code during Ralph iterations when new platform-specific quirks or patterns are discovered.)*
 
 - Both scrapers cap results at 20 candidates per search to avoid processing noise from lower-relevance listings.
-- Amazon brand extraction only recognizes three specific patterns: "by BrandName", "Visit the BrandName Store", "Brand: BrandName". Other secondary text is ignored.
-- Blinkit brand extraction never infers brand from the product name (e.g., first word). Returns empty string if no brand-specific element is found, to avoid wrong results for multi-word brands like "Mother Dairy" or adjectives like "Low Fat".
+- Amazon brand extraction checks for a dedicated brand h2 (`h2.a-size-mini`) first (new Amazon layout for brand-filtered searches), then falls back to legacy "by BrandName" / "Visit the BrandName Store" / "Brand: BrandName" patterns.
+- Amazon product name is extracted from the product link text (`a.a-link-normal.s-line-clamp-3`), not from h2 directly. Amazon restructured h2 elements — the link text is the most stable source for the product name.
+- Blinkit brand extraction returns the full product name as brand when no dedicated brand element exists. This enables substring-based brand constraint matching in `find_best_match` (e.g., `"tata" in "Tata Sampann Toor Dal"` works).
+- Blinkit search uses direct URL navigation (`/s/?q=<query>`) instead of interacting with the search bar. The homepage search bar is an `<a>` link, not an input.
 - Blinkit uses multiple selector fallback lists for every UI interaction (product cards, names, prices, search bar, location widget). The first selector that matches wins. This makes scrapers more resilient to Blinkit's class name changes.
-- Blinkit fee discovery always visits the cart page after reading the current page, not just as a fallback. The cart page is the most authoritative fee source.
+- Blinkit fee discovery always visits the cart page after reading the current page, not just as a fallback. However, if the cart is empty, Blinkit redirects to the homepage — the fee reader checks for `/cart` in the URL before extracting fees to avoid false matches from homepage content.
+- Blinkit product cards use Tailwind CSS (`tw-*` classes) with `div[role="button"]` as the card container. Name: `div.tw-text-300.tw-font-semibold.tw-line-clamp-2`. Price: `div.tw-text-200.tw-font-semibold`. Unit: `div.tw-text-200.tw-font-medium.tw-line-clamp-1`.
+- Blinkit blocks headless Chromium (returns error page). The browser runs in offscreen headed mode (`headless=False` with `--window-position=-10000,-10000`) on macOS.
 - Amazon's `_check_session_expired` checks URL for "signin", "login", or "auth" keywords. Blinkit uses the same approach.
 - `dismiss_modals()` on Blinkit includes a keyboard Escape press as a catch-all after trying all close-button selectors.
 

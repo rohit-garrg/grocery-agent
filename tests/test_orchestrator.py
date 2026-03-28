@@ -124,7 +124,11 @@ def setup_env(tmp_path, monkeypatch):
     # Patch orchestrator module-level paths
     monkeypatch.setattr("orchestrator.MASTER_LIST_PATH", ml_path)
     monkeypatch.setattr("orchestrator.BROWSER_PROFILE_PATH", profile_path)
+    monkeypatch.setattr("orchestrator.LOG_DIR", str(tmp_path / "logs"))
     monkeypatch.setattr("orchestrator.PINCODE", "122001")
+
+    # Patch time.sleep to skip delays in tests
+    monkeypatch.setattr("orchestrator.time.sleep", lambda _: None)
 
     # Patch browser manager
     monkeypatch.setattr(

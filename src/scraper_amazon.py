@@ -122,11 +122,13 @@ def extract_results(page):
                 except Exception:
                     pass
 
-            # Extract product name
-            title_elem = card.locator("h2 a span, h2 span.a-text-normal")
-            if title_elem.count() == 0:
+            # Extract product name from product link text
+            name_elem = card.locator("a.a-link-normal.s-line-clamp-3")
+            if name_elem.count() == 0:
+                name_elem = card.locator("h2 span")
+            if name_elem.count() == 0:
                 continue
-            name = (title_elem.first.text_content(timeout=1000) or "").strip()
+            name = (name_elem.first.text_content(timeout=1000) or "").strip()
             if not name:
                 continue
 
@@ -144,7 +146,7 @@ def extract_results(page):
 
             # Extract URL
             url = ""
-            url_elem = card.locator("h2 a")
+            url_elem = card.locator("a.a-link-normal.s-line-clamp-3, a[href*='/dp/']")
             if url_elem.count() > 0:
                 url = url_elem.first.get_attribute("href", timeout=1000) or ""
                 if url and not url.startswith("http"):
@@ -178,9 +180,20 @@ def extract_results(page):
 def _extract_brand(card):
     """Try to extract brand name from a search result card.
 
-    Only returns text that comes from a known brand-indicator pattern
-    ("by BrandName", "Visit the BrandName Store", "Brand: BrandName").
+    Checks for a dedicated brand h2 (new Amazon layout), then falls back
+    to the legacy "by BrandName" / "Visit the BrandName Store" patterns.
     """
+    # Primary: dedicated brand h2 (new Amazon layout for brand-filtered searches)
+    brand_h2 = card.locator("h2.a-size-mini span")
+    if brand_h2.count() > 0:
+        try:
+            text = (brand_h2.first.text_content(timeout=500) or "").strip()
+            if text:
+                return text
+        except Exception:
+            pass
+
+    # Fallback: legacy secondary text patterns
     by_elem = card.locator("span.a-size-base.a-color-secondary")
     for j in range(min(by_elem.count(), 5)):
         try:
