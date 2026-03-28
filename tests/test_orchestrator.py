@@ -257,6 +257,8 @@ class TestBothPlatformsFailed:
 
     def test_both_runtime_errors(self, setup_env, monkeypatch):
         """When both platforms throw RuntimeErrors (not session), exit code 1."""
+        monkeypatch.setattr("orchestrator.time.sleep", lambda s: None)  # Skip retry pauses
+
         call_count = {"amazon": 0, "blinkit": 0}
 
         def amazon_fail(page, query):
@@ -284,7 +286,9 @@ class TestBothPlatformsFailed:
 
 class TestConsecutiveFailures:
     def test_two_consecutive_failures_marks_unavailable(self, setup_env, monkeypatch):
-        """After 2 consecutive failures, platform is marked unavailable for remaining items."""
+        """After 2 consecutive failures (with retries exhausted), platform is marked unavailable."""
+        monkeypatch.setattr("orchestrator.time.sleep", lambda s: None)  # Skip retry pauses
+
         search_calls = []
 
         def amazon_always_fail(page, query):
@@ -302,10 +306,10 @@ class TestConsecutiveFailures:
         monkeypatch.setattr("orchestrator.scraper_blinkit.extract_results", _mock_blinkit_extract)
         monkeypatch.setattr("orchestrator.scraper_blinkit.discover_fees_blinkit", _mock_discover_fees_blinkit)
 
-        # 3 items selected — Amazon should fail on 2 and stop trying
+        # 3 items selected — Amazon should fail on 2 items (with retries) and stop trying the 3rd
         output, exit_code = run_comparison("1,2,3")
-        # Amazon search should be called only twice (stops after 2 consecutive failures)
-        assert len(search_calls) == 2
+        # Each failing item is retried 2 times (3 calls per item), 2 items attempted before consecutive cutoff
+        assert len(search_calls) == 6  # 2 items × 3 calls each (1 initial + 2 retries)
         # Blinkit should still work, so we get results
         assert exit_code == 0
 
@@ -392,3 +396,141 @@ class TestLoggingCalled:
         assert len(log_calls) == 1
         assert log_calls[0]["platforms"]["amazon"]["status"] == "session_expired"
         assert log_calls[0]["platforms"]["blinkit"]["status"] == "success"
+
+
+# ---------------------------------------------------------------------------
+# Retry logic tests
+# ---------------------------------------------------------------------------
+
+from orchestrator import _retry
+
+
+class TestRetryFunction:
+    def test_succeeds_first_try(self):
+        """No retry needed when function succeeds."""
+        calls = []
+        def fn():
+            calls.append(1)
+            return "ok"
+        assert _retry(fn, retries=2, pause=0) == "ok"
+        assert len(calls) == 1
+
+    def test_succeeds_after_one_failure(self):
+        """Function is retried after RuntimeError and succeeds."""
+        calls = []
+        def fn():
+            calls.append(1)
+            if len(calls) == 1:
+                raise RuntimeError("Temporary failure")
+            return "ok"
+        assert _retry(fn, retries=2, pause=0) == "ok"
+        assert len(calls) == 2
+
+    def test_exhausted_retries_raises(self):
+        """After max retries, RuntimeError is raised."""
+        calls = []
+        def fn():
+            calls.append(1)
+            raise RuntimeError("Always fails")
+        with pytest.raises(RuntimeError, match="Always fails"):
+            _retry(fn, retries=2, pause=0)
+        assert len(calls) == 3  # 1 initial + 2 retries
+
+    def test_session_expired_not_retried(self):
+        """Session expiry errors are raised immediately without retry."""
+        calls = []
+        def fn():
+            calls.append(1)
+            raise RuntimeError("Amazon session expired — please re-login")
+        with pytest.raises(RuntimeError, match="session expired"):
+            _retry(fn, retries=2, pause=0)
+        assert len(calls) == 1  # No retry
+
+    def test_passes_args_and_kwargs(self):
+        """Arguments and keyword arguments are forwarded correctly."""
+        def fn(a, b, c=None):
+            return (a, b, c)
+        assert _retry(fn, 1, 2, c=3, retries=0, pause=0) == (1, 2, 3)
+
+
+class TestRetryInPipeline:
+    def test_search_retried_on_failure_then_succeeds(self, setup_env, monkeypatch):
+        """Search that fails once then succeeds produces results."""
+        monkeypatch.setattr("orchestrator.time.sleep", lambda s: None)
+
+        call_count = {"amazon_search": 0}
+
+        def amazon_search_fail_once(page, query):
+            call_count["amazon_search"] += 1
+            if call_count["amazon_search"] <= 1:
+                raise RuntimeError("Temporary page load failure")
+
+        monkeypatch.setattr("orchestrator.scraper_amazon.set_location", _mock_set_location)
+        monkeypatch.setattr("orchestrator.scraper_amazon.search_items", amazon_search_fail_once)
+        monkeypatch.setattr("orchestrator.scraper_amazon.extract_results", _mock_amazon_extract)
+        monkeypatch.setattr("orchestrator.scraper_amazon.discover_fees_amazon", _mock_discover_fees_amazon)
+
+        monkeypatch.setattr("orchestrator.scraper_blinkit.set_location", _mock_set_location)
+        monkeypatch.setattr("orchestrator.scraper_blinkit.dismiss_modals", _mock_dismiss_modals)
+        monkeypatch.setattr("orchestrator.scraper_blinkit.search_items", _mock_blinkit_search)
+        monkeypatch.setattr("orchestrator.scraper_blinkit.extract_results", _mock_blinkit_extract)
+        monkeypatch.setattr("orchestrator.scraper_blinkit.discover_fees_blinkit", _mock_discover_fees_blinkit)
+
+        output, exit_code = run_comparison("1")
+        assert exit_code == 0
+        # Search was called twice (fail + retry success) for the single item
+        assert call_count["amazon_search"] == 2
+        assert "Toor Dal" in output
+
+    def test_set_location_retried_on_failure(self, setup_env, monkeypatch):
+        """set_location that fails once then succeeds is retried."""
+        monkeypatch.setattr("orchestrator.time.sleep", lambda s: None)
+
+        call_count = {"n": 0}
+
+        def set_loc_fail_once(page, pincode):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise RuntimeError("Location widget timeout")
+            return True
+
+        monkeypatch.setattr("orchestrator.scraper_amazon.set_location", set_loc_fail_once)
+        monkeypatch.setattr("orchestrator.scraper_amazon.search_items", _mock_amazon_search)
+        monkeypatch.setattr("orchestrator.scraper_amazon.extract_results", _mock_amazon_extract)
+        monkeypatch.setattr("orchestrator.scraper_amazon.discover_fees_amazon", _mock_discover_fees_amazon)
+
+        monkeypatch.setattr("orchestrator.scraper_blinkit.set_location", _mock_set_location)
+        monkeypatch.setattr("orchestrator.scraper_blinkit.dismiss_modals", _mock_dismiss_modals)
+        monkeypatch.setattr("orchestrator.scraper_blinkit.search_items", _mock_blinkit_search)
+        monkeypatch.setattr("orchestrator.scraper_blinkit.extract_results", _mock_blinkit_extract)
+        monkeypatch.setattr("orchestrator.scraper_blinkit.discover_fees_blinkit", _mock_discover_fees_blinkit)
+
+        output, exit_code = run_comparison("1,2")
+        assert exit_code == 0
+        assert call_count["n"] == 2  # 1 fail + 1 retry success
+
+    def test_session_expired_skips_retry_in_pipeline(self, setup_env, monkeypatch):
+        """Session expiry in set_location is not retried."""
+        monkeypatch.setattr("orchestrator.time.sleep", lambda s: None)
+
+        call_count = {"n": 0}
+
+        def amazon_expired(page, pincode):
+            call_count["n"] += 1
+            raise RuntimeError("Amazon session expired — please re-login in the browser profile.")
+
+        monkeypatch.setattr("orchestrator.scraper_amazon.set_location", amazon_expired)
+        monkeypatch.setattr("orchestrator.scraper_amazon.search_items", _mock_amazon_search)
+        monkeypatch.setattr("orchestrator.scraper_amazon.extract_results", _mock_amazon_extract)
+        monkeypatch.setattr("orchestrator.scraper_amazon.discover_fees_amazon", _mock_discover_fees_amazon)
+
+        monkeypatch.setattr("orchestrator.scraper_blinkit.set_location", _mock_set_location)
+        monkeypatch.setattr("orchestrator.scraper_blinkit.dismiss_modals", _mock_dismiss_modals)
+        monkeypatch.setattr("orchestrator.scraper_blinkit.search_items", _mock_blinkit_search)
+        monkeypatch.setattr("orchestrator.scraper_blinkit.extract_results", _mock_blinkit_extract)
+        monkeypatch.setattr("orchestrator.scraper_blinkit.discover_fees_blinkit", _mock_discover_fees_blinkit)
+
+        output, exit_code = run_comparison("1,2")
+        assert exit_code == 0
+        assert call_count["n"] == 1  # No retry for session expiry
+        assert "session expired" in output.lower()

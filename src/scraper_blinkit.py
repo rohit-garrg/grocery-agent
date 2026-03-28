@@ -356,7 +356,7 @@ def discover_fees_blinkit(page):
     Returns {"status": "session_expired"} if session is expired.
     """
     if _check_session_expired(page):
-        return {"status": "session_expired"}
+        return {"status": "session_expired", "platform": "blinkit"}
 
     fees = {
         "delivery_fee": 25,
@@ -376,7 +376,7 @@ def discover_fees_blinkit(page):
         time.sleep(2)
 
         if _check_session_expired(page):
-            return {"status": "session_expired"}
+            return {"status": "session_expired", "platform": "blinkit"}
 
         _read_fees_from_page(page, fees)
 

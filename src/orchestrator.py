@@ -46,6 +46,21 @@ DEFAULT_FEES = {
 }
 
 
+def _retry(fn, *args, retries=2, pause=10, **kwargs):
+    """Call fn with retry on RuntimeError. Session expiry is never retried."""
+    last_error = None
+    for attempt in range(1 + retries):
+        try:
+            return fn(*args, **kwargs)
+        except RuntimeError as e:
+            if "session expired" in str(e).lower():
+                raise
+            last_error = e
+            if attempt < retries:
+                time.sleep(pause)
+    raise last_error
+
+
 def _scrape_platform(platform, page, items, pincode):
     """Scrape prices and fees for one platform.
 
@@ -67,9 +82,9 @@ def _scrape_platform(platform, page, items, pincode):
     errors = []
     consecutive_failures = 0
 
-    # Set location
+    # Set location (with retry)
     try:
-        scraper.set_location(page, pincode)
+        _retry(scraper.set_location, page, pincode)
         consecutive_failures = 0
     except RuntimeError as e:
         msg = str(e)
@@ -92,7 +107,7 @@ def _scrape_platform(platform, page, items, pincode):
         brand_constraint = item.get("brand")
 
         try:
-            scraper.search_items(page, query)
+            _retry(scraper.search_items, page, query)
             candidates = scraper.extract_results(page)
             match = find_best_match(candidates, query, brand_constraint)
             if match:
@@ -108,12 +123,12 @@ def _scrape_platform(platform, page, items, pincode):
             prices[item["id"]] = None
             consecutive_failures += 1
 
-    # Discover fees
+    # Discover fees (with retry)
     try:
         if platform == "amazon":
-            discovered = scraper_amazon.discover_fees_amazon(page)
+            discovered = _retry(scraper_amazon.discover_fees_amazon, page)
         else:
-            discovered = scraper_blinkit.discover_fees_blinkit(page)
+            discovered = _retry(scraper_blinkit.discover_fees_blinkit, page)
 
         if isinstance(discovered, dict) and discovered.get("status") == "session_expired":
             return prices, {"status": "session_expired", "platform": platform}, errors

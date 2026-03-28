@@ -204,7 +204,7 @@ def discover_fees_amazon(page):
     Returns {"status": "session_expired"} if session is expired.
     """
     if _check_session_expired(page):
-        return {"status": "session_expired"}
+        return {"status": "session_expired", "platform": "amazon"}
 
     fees = {
         "delivery_fee": 40,
