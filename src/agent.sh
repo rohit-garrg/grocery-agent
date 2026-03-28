@@ -36,16 +36,17 @@ AGENT_PROMPT="$(cat src/agent_prompt.md)
 
 User's item selection: ${SELECTION}"
 
+CLAUDE_CMD=(claude -p "Compare grocery prices for the items selected by the user." \
+    --append-system-prompt "$AGENT_PROMPT" \
+    --allowedTools "Bash" \
+    --output-format text)
+
 if [ -n "$TIMEOUT_CMD" ]; then
-    result=$($TIMEOUT_CMD 900 claude -p "Compare grocery prices for the items selected by the user." \
-        --append-system-prompt "$AGENT_PROMPT" \
-        --allowedTools "Bash" "Read" \
-        --output-format text 2>&1) || result="ERROR: claude -p failed or timed out"
-else
-    result=$(claude -p "Compare grocery prices for the items selected by the user." \
-        --append-system-prompt "$AGENT_PROMPT" \
-        --allowedTools "Bash" "Read" \
-        --output-format text 2>&1) || result="ERROR: claude -p failed or timed out"
+    CLAUDE_CMD=("$TIMEOUT_CMD" 900 "${CLAUDE_CMD[@]}")
 fi
+
+result=$("${CLAUDE_CMD[@]}" 2>&1) || {
+    [ -z "$result" ] && result="ERROR: claude -p failed or timed out"
+}
 
 echo "$result"
