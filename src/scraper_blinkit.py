@@ -350,8 +350,9 @@ def _extract_brand(card, product_name):
 def discover_fees_blinkit(page):
     """Read delivery fee and handling charge information from Blinkit.
 
-    Looks for fee info in banners on the current page. Falls back to empty
-    cart page. Returns fee dict or defaults if nothing found.
+    Reads fee info from banners on the current page, then always also
+    navigates to the empty cart page (the most authoritative source).
+    Returns fee dict or defaults if nothing found.
     Returns {"status": "session_expired"} if session is expired.
     """
     if _check_session_expired(page):
@@ -384,6 +385,17 @@ def discover_fees_blinkit(page):
         time.sleep(1)
     except Exception:
         pass
+
+    # Deduplicate cashback tiers — both page reads append to the same list,
+    # so the same tier can appear twice if both pages show the same banner.
+    seen = set()
+    unique_tiers = []
+    for t in fees["cashback_tiers"]:
+        key = (t["min_order"], t["cashback"])
+        if key not in seen:
+            seen.add(key)
+            unique_tiers.append(t)
+    fees["cashback_tiers"] = unique_tiers
 
     return fees
 
