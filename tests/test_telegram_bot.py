@@ -33,6 +33,27 @@ def mock_context():
     return MagicMock()
 
 
+class TestNoneMessageGuard:
+    """Handlers must return cleanly when update.message is None (e.g., edited messages)."""
+    @pytest.fixture
+    def mock_update_no_message(self, allowed_user_id):
+        update = MagicMock()
+        update.message = None
+        update.effective_user.id = allowed_user_id
+        return update
+
+    @pytest.mark.asyncio
+    async def test_all_handlers_survive_none_message(self, mock_update_no_message, mock_context, allowed_user_id):
+        with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)):
+            from src.telegram_bot import (
+                help_command, start_command, compare_command,
+                add_command, remove_command, unknown_command, on_text_message,
+            )
+            for handler in (help_command, start_command, compare_command,
+                            add_command, remove_command, unknown_command, on_text_message):
+                await handler(mock_update_no_message, mock_context)
+
+
 class TestIsAllowedUser:
     def test_allowed_user(self, mock_update_allowed, allowed_user_id):
         with patch("src.telegram_bot.ALLOWED_USER_ID", str(allowed_user_id)):

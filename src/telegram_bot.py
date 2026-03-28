@@ -90,11 +90,14 @@ async def _cancel_pending_state(update: Update, user_id: int) -> None:
     """If a remove confirmation is pending, cancel it before processing a new command."""
     if state.get(user_id, {}).get("step") == "awaiting_remove_confirm":
         state.pop(user_id, None)
-        await update.message.reply_text("Removal cancelled.")
+        if update.message is not None:
+            await update.message.reply_text("Removal cancelled.")
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /help command."""
+    if update.message is None:
+        return
     if not is_allowed_user(update):
         return
     await _cancel_pending_state(update, update.effective_user.id)
@@ -103,6 +106,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /start command."""
+    if update.message is None:
+        return
     if not is_allowed_user(update):
         return
     await _cancel_pending_state(update, update.effective_user.id)
@@ -111,6 +116,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 async def compare_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /compare -- show master list and await selection."""
+    if update.message is None:
+        return
     if not is_allowed_user(update):
         return
     await _cancel_pending_state(update, update.effective_user.id)
@@ -200,6 +207,8 @@ async def _handle_selection(update: Update, user_id: int) -> None:
 
 async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /add <name> -- add item to master list."""
+    if update.message is None:
+        return
     if not is_allowed_user(update):
         return
     await _cancel_pending_state(update, update.effective_user.id)
@@ -221,6 +230,8 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 async def remove_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /remove <id> -- remove item from master list (with confirmation)."""
+    if update.message is None:
+        return
     if not is_allowed_user(update):
         return
     await _cancel_pending_state(update, update.effective_user.id)
@@ -251,6 +262,8 @@ async def remove_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle unrecognized commands."""
+    if update.message is None:
+        return
     if not is_allowed_user(update):
         return
     await update.message.reply_text(f"Unknown command.\n\n{HELP_TEXT}")
@@ -258,6 +271,8 @@ async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 async def on_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle plain text messages (for conversation state flows)."""
+    if update.message is None:
+        return
     if not is_allowed_user(update):
         return
     user_id = update.effective_user.id
