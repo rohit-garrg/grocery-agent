@@ -94,9 +94,8 @@ def _scrape_platform(platform, page, items, pincode):
         errors.append(f"{platform} location error: {msg}")
         consecutive_failures += 1
 
-    # Dismiss modals (Blinkit)
-    if platform == "blinkit":
-        scraper_blinkit.dismiss_modals(page)
+    # Dismiss modals (no-op on Amazon, dismisses banners on Blinkit)
+    scraper.dismiss_modals(page)
 
     # Scrape each item
     for item in items:

@@ -77,6 +77,10 @@ def set_location(page, pincode):
     )
 
 
+def dismiss_modals(page):
+    """No-op: Amazon has no modal overlays to dismiss."""
+
+
 def search_items(page, query):
     """Search for items on Amazon.in.
 
