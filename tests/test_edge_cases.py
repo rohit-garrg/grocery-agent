@@ -23,7 +23,6 @@ from orchestrator import run_comparison
 from optimizer import optimize_cart
 from formatter import format_comparison, split_message
 from selection_parser import parse_selection
-from match_utils import find_best_match
 
 
 # ---------------------------------------------------------------------------
@@ -420,7 +419,8 @@ class TestBrandConstraint:
             })
 
         output, exit_code = run_comparison("1")
-        assert exit_code == 1  # No items found on any platform
+        assert exit_code == 1
+        assert "no platforms available" in output.lower() or "no items" in output.lower()
 
 
 # ---------------------------------------------------------------------------
