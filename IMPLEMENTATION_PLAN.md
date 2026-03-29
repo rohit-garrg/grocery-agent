@@ -129,7 +129,7 @@ User's item selection: ${SELECTION}" \
 
 - [x] **D7: End-to-end integration test.** With real browser profiles and both platforms logged in: send `/compare` via Telegram, select 5 items (mix of items available on both platforms and one available on only one platform), confirm the full output appears correctly in Telegram. Spot-check 2 prices manually against the platforms. Confirm log file is created. Confirm price history is appended. Document any layout changes or selector fixes needed. This is a manual test — no automated test file. Document results in a short comment in CLAUDE.md under "E2E Test Notes."
 
-- [ ] **D-SIMPLIFY: Code health pass for Phase D.** Review orchestrator, agent bridge, logger, and all integration wiring. Simplify without changing behavior. See PROMPT.md "SIMPLIFY tasks" rules.
+- [x] **D-SIMPLIFY: Code health pass for Phase D.** Review orchestrator, agent bridge, logger, and all integration wiring. Simplify without changing behavior. See PROMPT.md "SIMPLIFY tasks" rules.
 
 - [ ] **D-SYNC-DOCS: Documentation sync after Phase D.** Full sync of all docs against the complete codebase. See PROMPT.md "SYNC-DOCS tasks" rules.
 
