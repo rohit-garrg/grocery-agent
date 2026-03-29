@@ -131,7 +131,7 @@ User's item selection: ${SELECTION}" \
 
 - [x] **D-SIMPLIFY: Code health pass for Phase D.** Review orchestrator, agent bridge, logger, and all integration wiring. Simplify without changing behavior. See PROMPT.md "SIMPLIFY tasks" rules.
 
-- [ ] **D-SYNC-DOCS: Documentation sync after Phase D.** Full sync of all docs against the complete codebase. See PROMPT.md "SYNC-DOCS tasks" rules.
+- [x] **D-SYNC-DOCS: Documentation sync after Phase D.** Full sync of all docs against the complete codebase. See PROMPT.md "SYNC-DOCS tasks" rules.
 
 ---
 
