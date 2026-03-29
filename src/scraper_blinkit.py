@@ -345,7 +345,6 @@ def discover_fees(page):
     # Always also check the cart page — it's the most authoritative source for
     # fee structure and may have fields that were absent on the current page.
     try:
-        current_url = page.url
         page.goto("https://blinkit.com/cart", wait_until="domcontentloaded", timeout=15000)
         time.sleep(2)
 
@@ -355,10 +354,6 @@ def discover_fees(page):
         # Only read fees if we're actually on the cart page (empty cart redirects to homepage)
         if "/cart" in page.url:
             _read_fees_from_page(page, fees)
-
-        # Navigate back
-        page.goto(current_url, wait_until="domcontentloaded", timeout=15000)
-        time.sleep(1)
     except Exception:
         pass
 
