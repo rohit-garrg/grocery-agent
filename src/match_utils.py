@@ -50,6 +50,34 @@ def _compute_score(query_original_tokens, candidate_token_set):
     return len(matched)
 
 
+_UNIT_CANONICAL = {
+    "g": "g", "kg": "kg", "ml": "ml",
+    "l": "l", "ltr": "l", "litre": "l", "liter": "l",
+    "lb": "lb", "oz": "oz",
+    "pack": "pack", "pcs": "pcs", "piece": "pcs", "pieces": "pcs",
+}
+
+_QTY_RE = re.compile(
+    r'^(\d+)(' + '|'.join(sorted(UNIT_STRINGS, key=len, reverse=True)) + r')$'
+)
+
+
+def _extract_quantity_tokens(combined_token_set):
+    """Extract and normalize quantity tokens from a combined token set.
+
+    Returns a set of canonical quantity strings (e.g., {"500g", "4l"}).
+    Unit aliases are normalized: ltr/litre/liter -> l, piece/pieces -> pcs.
+    """
+    qty = set()
+    for tok in combined_token_set:
+        m = _QTY_RE.match(tok)
+        if m:
+            num, unit = m.groups()
+            canonical = _UNIT_CANONICAL.get(unit, unit)
+            qty.add(num + canonical)
+    return qty
+
+
 def find_best_match(candidates, query, brand_constraint=None):
     """Find the best matching candidate for a query string.
 
@@ -64,7 +92,7 @@ def find_best_match(candidates, query, brand_constraint=None):
     if not candidates:
         return None
 
-    query_original_tokens, _ = _normalize_tokens(query)
+    query_original_tokens, query_combined = _normalize_tokens(query)
 
     if not query_original_tokens:
         return None
@@ -73,6 +101,23 @@ def find_best_match(candidates, query, brand_constraint=None):
     if brand_constraint is not None:
         brand_lower = brand_constraint.lower()
         candidates = [c for c in candidates if brand_lower in c["brand"].lower()]
+        if not candidates:
+            return None
+
+    # Mandatory quantity filter: if query has quantity tokens, candidates must match
+    query_qty_tokens = _extract_quantity_tokens(query_combined)
+    if query_qty_tokens:
+        filtered = []
+        for c in candidates:
+            _, c_combined = _normalize_tokens(c["name"])
+            unit_text = c.get("unit", "")
+            if unit_text:
+                _, unit_combined = _normalize_tokens(unit_text)
+                c_combined = c_combined | unit_combined
+            c_qty_tokens = _extract_quantity_tokens(c_combined)
+            if query_qty_tokens & c_qty_tokens:
+                filtered.append(c)
+        candidates = filtered
         if not candidates:
             return None
 
