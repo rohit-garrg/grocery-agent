@@ -191,6 +191,7 @@ Both are required. The settings.json covers interactive use. The `--allowedTools
 - Blinkit blocks headless Chromium (returns error page). The browser runs in offscreen headed mode (`headless=False` with `--window-position=-10000,-10000`) on macOS.
 - Amazon's `_check_session_expired` checks URL for "signin", "login", or "auth" keywords. Blinkit uses the same approach.
 - `dismiss_modals()` on Blinkit includes a keyboard Escape press as a catch-all after trying all close-button selectors.
+- Quantity tokens (e.g., 500g, 1kg, 4l) in queries are mandatory match criteria — candidates without a matching quantity token are filtered out before scoring. Unit aliases are normalized (ltr/litre/liter → l, piece/pieces → pcs) so "4 ltr" matches "4 L". The candidate's `unit` field is also checked, since Blinkit sometimes stores size info outside the product name.
 
 ## E2E Test Notes
 
