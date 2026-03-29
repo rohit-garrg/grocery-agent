@@ -1,7 +1,1 @@
-[
-  {"id": 1, "name": "Toor Dal 1kg", "query": "toor dal 1 kg", "brand": null, "category": "pulses"},
-  {"id": 2, "name": "Amul Butter 500g", "query": "amul butter 500g", "brand": "Amul", "category": "dairy"},
-  {"id": 3, "name": "Surf Excel Liquid Top Load 4L", "query": "surf excel liquid top load 4 ltr", "brand": "Surf Excel", "category": "household"},
-  {"id": 4, "name": "Moong Dal 1kg", "query": "moong dal 1 kg", "brand": null, "category": "pulses"},
-  {"id": 5, "name": "Chhole 1kg", "query": "chhole 1 kg", "brand": null, "category": "pulses"}
-]
+[]

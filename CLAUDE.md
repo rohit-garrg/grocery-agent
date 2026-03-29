@@ -2,7 +2,7 @@
 
 ## What This Project Is
 
-A Telegram bot that compares grocery prices across Amazon (Prime) and Blinkit for a user in Gurugram 122001. The user selects items from a master list, the agent scrapes current prices via Python Playwright, optimizes the cart split factoring in delivery fees and cashback, and returns a recommendation via Telegram.
+A Telegram bot that compares grocery prices across Amazon (Prime) and Blinkit. The user selects items from a master list, the agent scrapes current prices via Python Playwright, optimizes the cart split factoring in delivery fees and cashback, and returns a recommendation via Telegram. Works for any Indian pincode — configured via the `PINCODE` environment variable.
 
 Full spec: `spec.md`
 Task checklist: `IMPLEMENTATION_PLAN.md`

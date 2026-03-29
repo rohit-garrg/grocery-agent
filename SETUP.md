@@ -28,7 +28,7 @@ cp .env.example .env
 | `TELEGRAM_TOKEN` | Bot token from @BotFather |
 | `ALLOWED_USER_ID` | Your Telegram numeric user ID |
 | `BROWSER_PROFILE_PATH` | Absolute path for the persistent browser profile (e.g., `/Users/you/grocery-browser-profile`) |
-| `PINCODE` | Delivery pincode (default: `122001`) |
+| `PINCODE` | Your delivery pincode (e.g., `110001`) |
 
 ## 3. Log into platforms
 
@@ -40,8 +40,8 @@ Run the browser setup script to open a headed Chromium window:
 
 This opens two tabs — Amazon and Blinkit. Log into both platforms:
 
-- **Amazon:** Sign in with your Prime account. Set your delivery address to Gurugram 122001.
-- **Blinkit:** Sign in and set your delivery location to pincode 122001.
+- **Amazon:** Sign in with your Prime account. Set your delivery address to your pincode.
+- **Blinkit:** Sign in and set your delivery location to your pincode.
 
 Once logged in, press Enter in the terminal to close the browser. Your sessions are saved to the persistent profile directory and will be reused by the bot.
 
