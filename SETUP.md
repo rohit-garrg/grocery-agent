@@ -17,10 +17,11 @@ playwright install chromium
 
 ## 2. Configure environment
 
-Copy `.env.example` to `.env` and fill in the values:
+Copy the example files and fill in your values:
 
 ```bash
 cp .env.example .env
+cp master_list.example.json master_list.json
 ```
 
 | Variable | Description |

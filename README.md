@@ -34,6 +34,8 @@ playwright install chromium
 cp .env.example .env
 # Edit .env with your Telegram token, user ID, browser profile path, and delivery pincode
 
+cp master_list.example.json master_list.json
+
 # 3. Log into Amazon and Blinkit in the persistent browser
 ./setup_browser.sh
 # Sign into both platforms, set your delivery address, then press Enter to close
