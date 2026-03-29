@@ -137,7 +137,7 @@ User's item selection: ${SELECTION}" \
 
 ## Phase E: Edge cases and hardening
 
-- [ ] **E1: Manual login and profile setup.** Create `setup_browser.sh`: launches Playwright with the persistent profile in **headed** (visible) mode so the user can manually log into Amazon and Blinkit. The script opens the browser, navigates to amazon.in and blinkit.com in separate tabs, then waits for the user to press Enter before closing. Document first-time setup process in a `SETUP.md` file. Verify: after manual login, headless runs can access logged-in pages.
+- [x] **E1: Manual login and profile setup.** Create `setup_browser.sh`: launches Playwright with the persistent profile in **headed** (visible) mode so the user can manually log into Amazon and Blinkit. The script opens the browser, navigates to amazon.in and blinkit.com in separate tabs, then waits for the user to press Enter before closing. Document first-time setup process in a `SETUP.md` file. Verify: after manual login, headless runs can access logged-in pages.
 
 - [ ] **E2: Edge case testing.** Test: single item selection. Test: all items unavailable on one platform (session expired). Test: one platform down (disable network to that domain). Test: large selection (20+ items — verify brute-force handles it or greedy kicks in). Test: brand-constrained item. Test: quantity `x` syntax (`1x3,4x2`). Test: Telegram message splitting with a very long output (15+ items to trigger table overflow splitting). Document results and fix any failures.
 
