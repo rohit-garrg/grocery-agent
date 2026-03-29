@@ -47,9 +47,16 @@ grocery-agent/
 │   └── logger.py                 # Run logging and price history
 ├── tests/
 │   ├── conftest.py               # Registers pytest markers (integration)
+│   ├── test_edge_cases.py        # Cross-module edge case tests (E2 hardening)
 │   └── test_*.py                 # One test file per source module
 ├── master_list.json              # Item master list (source of truth)
-├── .claude/settings.json         # Claude Code tool permissions
+├── .claude/
+│   ├── settings.local.json       # Local Claude Code permissions + hooks (untracked)
+│   └── agents/
+│       └── security-reviewer.md  # Security review subagent definition
+├── .env.example                  # Template for .env (all required vars documented)
+├── setup_browser.sh              # Opens headed browser for manual platform login
+├── SETUP.md                      # First-time setup guide
 ├── PROMPT.md                     # Ralph loop implementation prompt
 ├── REVIEW_PROMPT.md              # Ralph loop adversarial review prompt
 ├── ralph.sh                      # Ralph loop orchestrator (two-pass: implement + review)
@@ -140,28 +147,15 @@ These MCP servers are configured at user scope (`~/.claude.json` or via `claude 
 
 Claude Code in headless mode (`claude -p`) requires explicit tool permissions. These are provided in two ways:
 
-1. **`.claude/settings.json`** (for interactive sessions):
-   ```json
-   {
-     "permissions": {
-       "allow": [
-         "Bash(*)",
-         "Read(*)",
-         "Write(*)",
-         "Edit(*)",
-         "MultiEdit(*)"
-       ],
-       "deny": []
-     }
-   }
-   ```
+1. **`.claude/settings.local.json`** (for interactive sessions):
+   Local settings file (untracked) with tool permissions and hooks. Contains `Bash(*)` patterns for common commands, plus `PreToolUse` hooks that block edits to credential/session files and `PostToolUse` hooks that auto-run tests after source file edits.
 
 2. **`--allowedTools` flag** (for headless mode):
    - **ralph.sh** implementation pass: `--allowedTools "Bash" "Read" "Write" "Edit" "MultiEdit"`
    - **ralph.sh** review pass: `--allowedTools "Bash" "Read" "Write" "Edit" "MultiEdit" "Task" "mcp__gemini__ask-gemini" "Agent(security-reviewer)"`
    - **agent.sh** (runtime): `--allowedTools "Bash"` — the agent only needs to run `python3 src/orchestrator.py`
 
-Both are required. The settings.json covers interactive use. The `--allowedTools` flag covers `claude -p` invocations.
+Both are required. The `settings.local.json` covers interactive use. The `--allowedTools` flag covers `claude -p` invocations.
 
 ## Common Pitfalls
 

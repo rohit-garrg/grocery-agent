@@ -235,13 +235,17 @@ grocery-agent/
 ├── .env                          # TELEGRAM_TOKEN, ALLOWED_USER_ID, BROWSER_PROFILE_PATH, PINCODE
 ├── .gitignore
 ├── .claude/
-│   └── settings.json             # Claude Code tool permissions (headless + interactive)
+│   ├── settings.local.json       # Local Claude Code permissions + hooks (untracked)
+│   └── agents/
+│       └── security-reviewer.md  # Security review subagent definition
 ├── CLAUDE.md                     # Project conventions (auto-read by Claude Code)
 ├── spec.md                       # This file
 ├── IMPLEMENTATION_PLAN.md        # Ralph loop task checklist
 ├── PROMPT.md                     # Ralph loop per-iteration implementation prompt
 ├── REVIEW_PROMPT.md              # Ralph loop per-iteration adversarial review prompt
 ├── ralph.sh                      # Ralph loop orchestrator (two-pass: implement + review)
+├── .env.example                  # Template for .env (all required vars documented)
+├── setup_browser.sh              # Opens headed browser for manual platform login
 ├── SETUP.md                      # First-time setup guide (browser login, MCP verification)
 ├── requirements.txt              # Pinned Python dependencies
 ├── master_list.json              # Grocery item master list
@@ -270,7 +274,8 @@ grocery-agent/
 │   ├── test_browser_smoke.py     # Browser context smoke test (integration)
 │   ├── test_orchestrator.py      # Orchestrator pipeline tests (mocked scrapers)
 │   ├── test_logger.py            # Logging unit tests
-│   └── test_telegram_bot.py      # Telegram bot unit tests
+│   ├── test_telegram_bot.py      # Telegram bot unit tests
+│   └── test_edge_cases.py        # Cross-module edge case tests (E2 hardening)
 ├── browser_profile/              # Playwright persistent context (gitignored)
 ├── logs/                         # Agent run logs (gitignored)
 └── price_history/                # Historical price data (gitignored)
