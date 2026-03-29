@@ -2,6 +2,7 @@
 
 import re
 import time
+import urllib.parse
 
 
 def _check_session_expired(page):
@@ -182,7 +183,6 @@ def search_items(page, query):
     if _check_session_expired(page):
         raise RuntimeError("Blinkit session expired — please re-login in the browser profile.")
 
-    import urllib.parse
     encoded = urllib.parse.quote(query)
     page.goto(f"https://blinkit.com/s/?q={encoded}", wait_until="domcontentloaded", timeout=30000)
     time.sleep(3)
