@@ -26,11 +26,14 @@ echo ""
 echo "Log into both platforms, then come back here and press Enter to close."
 echo ""
 
-python3 -c "
-from playwright.sync_api import sync_playwright
-import sys
+# Export so Python reads it via os.environ — avoids shell injection from string interpolation.
+export BROWSER_PROFILE_PATH
 
-profile_path = '$BROWSER_PROFILE_PATH'
+python3 -c "
+import os
+from playwright.sync_api import sync_playwright
+
+profile_path = os.environ['BROWSER_PROFILE_PATH']
 
 pw = sync_playwright().start()
 try:
@@ -46,7 +49,10 @@ try:
     blinkit_page.goto('https://www.blinkit.com', wait_until='domcontentloaded')
 
     print('Browser is open. Log into both platforms.')
-    input('Press Enter to close the browser...')
+    try:
+        input('Press Enter to close the browser...')
+    except EOFError:
+        pass
 
     context.close()
 finally:
