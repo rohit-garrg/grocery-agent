@@ -157,7 +157,8 @@ Claude Code in headless mode (`claude -p`) requires explicit tool permissions. T
    ```
 
 2. **`--allowedTools` flag** (for headless mode):
-   - **ralph.sh** (build-time): `--allowedTools "Bash" "Read" "Write" "Edit" "MultiEdit"`
+   - **ralph.sh** implementation pass: `--allowedTools "Bash" "Read" "Write" "Edit" "MultiEdit"`
+   - **ralph.sh** review pass: `--allowedTools "Bash" "Read" "Write" "Edit" "MultiEdit" "Task" "mcp__gemini__ask-gemini" "Agent(security-reviewer)"`
    - **agent.sh** (runtime): `--allowedTools "Bash"` — the agent only needs to run `python3 src/orchestrator.py`
 
 Both are required. The settings.json covers interactive use. The `--allowedTools` flag covers `claude -p` invocations.
@@ -167,11 +168,11 @@ Both are required. The settings.json covers interactive use. The `--allowedTools
 - Amazon and Blinkit page layouts change without warning. If a selector breaks, update only the selector expression, not the surrounding extraction logic.
 - Blinkit shows a location modal and an app-install banner on most page loads. `dismiss_modals()` must be called before any search interaction.
 - Amazon shows different prices for Prime vs non-Prime. The agent must run within a logged-in Prime session. If prices look wrong, check that the session is valid.
-- `python-telegram-bot` v20+ (currently v22.7) is fully async. All handlers must be `async def`. Do not mix sync and async patterns in `telegram_bot.py`.
+- `python-telegram-bot` v20+ (currently v22.7) is fully async. All handlers must be `async def`. The only permitted sync/async bridge in `telegram_bot.py` is `asyncio.to_thread()` for subprocess calls — do not introduce any other sync/async mixing.
 - Telegram messages have a 4096 character limit. Always call `formatter.split_message()` before sending. Do not assume the output will be short. With 15+ items, the comparison table alone can exceed 4096 chars.
 - Master list IDs are never reused after deletion. Always compute next id as `max(existing_ids) + 1`, not `len(list) + 1`.
 - `playwright install chromium` must be run after every fresh `pip install playwright`. The package alone does not include the browser binary.
-- On macOS, use `gtimeout` instead of `timeout`. ralph.sh auto-detects this, but agent.sh may need manual adjustment.
+- On macOS, both `ralph.sh` and `agent.sh` auto-detect `gtimeout` (from Homebrew coreutils) and fall back to `timeout`. If neither is installed, the timeout guard is skipped entirely.
 - The match_utils `find_best_match()` includes unit normalization: "1 kg" and "1kg" are treated as equivalent during token matching. Both forms are generated and checked.
 
 ## Learned Conventions
@@ -190,7 +191,7 @@ Both are required. The settings.json covers interactive use. The `--allowedTools
 - Amazon's `_check_session_expired` checks URL for "signin", "login", or "auth" keywords. Blinkit uses the same approach.
 - `dismiss_modals()` on Blinkit includes a keyboard Escape press as a catch-all after trying all close-button selectors.
 - Quantity tokens (e.g., 500g, 1kg, 4l) in queries are mandatory match criteria — candidates without a matching quantity token are filtered out before scoring. Unit aliases are normalized (ltr/litre/liter → l, piece/pieces → pcs) so "4 ltr" matches "4 L". The candidate's `unit` field is also checked, since Blinkit sometimes stores size info outside the product name.
-- Both scrapers share a duck-typing interface: `set_location(page, pincode)`, `dismiss_modals(page)`, `search_items(page, query)`, `extract_results(page)`, `discover_fees(page)`. The orchestrator calls these generically via `scraper.fn(page, ...)`. Amazon's `dismiss_modals` is a no-op; Blinkit's dismisses banners/modals and presses Escape.
+- Both scrapers share a duck-typing interface: `set_location(page, pincode)`, `dismiss_modals(page)`, `search_items(page, query)`, `extract_results(page)`, `discover_fees(page)`. The orchestrator calls these generically via `scraper.fn(page, ...)`. Amazon's `dismiss_modals` is currently a no-op (Amazon rarely shows blocking overlays in a logged-in Prime session); Blinkit's dismisses banners/modals and presses Escape.
 - The concurrency lock uses atomic `mkdir` (a directory, not a file) for race-free creation, with PID tracking (`$LOCKDIR/pid`) for stale lock recovery. `telegram_bot.py` pre-checks with `os.path.isdir()` before spawning the subprocess.
 - The orchestrator enforces a daily run limit of 3 comparisons as a safety throttle against excessive automated requests. Count is determined by checking existing `run_YYYYMMDD_*.json` log files for the current date.
 - Anti-bot-detection: the orchestrator adds random delays between item searches (2-5s) and between platform switches (3-8s) to reduce detection risk.
