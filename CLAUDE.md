@@ -229,3 +229,30 @@ Both are required. The settings.json covers interactive use. The `--allowedTools
 - `agent.sh` only grants `Bash` tool to `claude -p`, matching agent_prompt.md's single-command design.
 - Session expiry propagation path: scraper → `_scrape_platform()` → orchestrator output → Telegram message verified in code.
 - Logging calls happen in `finally`-equivalent position (after format, before return) and are wrapped in try/except to never break the pipeline.
+
+## Security Review (E3)
+
+**Reviewed 2026-03-29. All items confirmed secure unless noted otherwise.**
+
+### Input validation chain
+- `selection_parser.py` enforces strict regex: `^\d+(x\d+)?(,\d+(x\d+)?)*$` — only digits, `x`, and commas.
+- `telegram_bot.py` reconstructs the selection string from parsed integer dicts (lines 151-154), never passing raw user text to the shell.
+- `agent.sh` receives the selection as a shell argument and passes it via `--append-system-prompt` (a quoted string), not interpolated into a command.
+
+### Authentication
+- `is_allowed_user()` is called as the first check in every command handler and the text message handler. Unauthorized users receive no response.
+- `ALLOWED_USER_ID` is validated as numeric at startup (`main()`). Missing or non-numeric values raise `RuntimeError` immediately.
+
+### Concurrency lock
+- `agent.sh` uses atomic `mkdir` (POSIX race-free) with PID tracking for stale lock recovery.
+- `trap 'rm -rf "$LOCKDIR"' EXIT` covers all exit paths (normal exit, errors, signals except SIGKILL).
+- `telegram_bot.py` pre-checks with `os.path.isdir()` before spawning subprocess (optimistic check, agent.sh is authoritative).
+
+### Accepted risks
+- **`.env` readable by the agent:** The `.env` file is in the project root. The `claude -p` agent invoked by `agent.sh` has `Bash` tool access and could theoretically read it. This is accepted because: (1) the agent already runs with the same OS user permissions, (2) `agent.sh` only grants the `Bash` tool (not `Read`), (3) the agent prompt is tightly scoped to running the orchestrator only.
+- **Telegram token in git history:** The `.env` file was accidentally committed in the initial project setup (`4eaee02`). It has been untracked (`git rm --cached .env`) but remains in git history. **Action required:** Regenerate the Telegram token via @BotFather, then clean git history with `git filter-repo --path .env --invert-paths` if the repo is ever shared.
+
+### What's NOT logged
+- No env vars, tokens, user IDs, or session data appear in logs or stdout.
+- `logger.py` records only item IDs, names, prices, fees, and timing.
+- Error messages in `orchestrator.py` are written to stderr and never include credentials.
