@@ -143,6 +143,6 @@ User's item selection: ${SELECTION}" \
 
 - [x] **E3: Security and input hardening review.** Review `telegram_bot.py`: confirm ALLOWED_USER_ID check happens before ANY processing. Confirm selection string is shell-quoted when passed to `agent.sh`. Confirm `.env` is not readable by the agent (it's in project root, agent has Read tool — this is acceptable since the agent already has bash access; document this accepted risk in CLAUDE.md). Review `agent.sh`: confirm selection is passed via --append-system-prompt rather than interpolated into the main prompt string. Confirm lockfile trap covers all exit paths.
 
-- [ ] **E-SIMPLIFY: Final code health pass.** Review the entire `src/` directory. Final simplification pass before project is considered complete. See PROMPT.md "SIMPLIFY tasks" rules.
+- [x] **E-SIMPLIFY: Final code health pass.** Review the entire `src/` directory. Final simplification pass before project is considered complete. See PROMPT.md "SIMPLIFY tasks" rules.
 
 - [ ] **E-SYNC-DOCS: Final documentation sync.** Comprehensive sync of all docs. Ensure SETUP.md, spec.md, CLAUDE.md all reflect the finished project. See PROMPT.md "SYNC-DOCS tasks" rules.
