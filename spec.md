@@ -221,7 +221,7 @@ Savings with split: ₹89
 
 - **Runtime:** Claude Code via `claude -p` on Max plan (invoked without `--resume`; fresh context per run)
 - **Browser automation:** Python Playwright library (`playwright` package), sync API, headless Chromium
-- **Messaging:** Telegram Bot API (`python-telegram-bot` v20.x, async)
+- **Messaging:** Telegram Bot API (`python-telegram-bot` v22.x, async)
 - **Language:** Python 3.11+
 - **Optimization:** Pure Python brute-force (no external solver)
 - **Data storage:** JSON files on disk
@@ -268,6 +268,8 @@ grocery-agent/
 │   ├── test_match_utils.py
 │   ├── test_scrapers.py          # Integration tests (marked, require browser)
 │   ├── test_browser_smoke.py     # Browser context smoke test (integration)
+│   ├── test_orchestrator.py      # Orchestrator pipeline tests (mocked scrapers)
+│   ├── test_logger.py            # Logging unit tests
 │   └── test_telegram_bot.py      # Telegram bot unit tests
 ├── browser_profile/              # Playwright persistent context (gitignored)
 ├── logs/                         # Agent run logs (gitignored)
@@ -287,14 +289,14 @@ PINCODE=122001          # Delivery pincode
 
 - `ALLOWED_USER_ID` is validated in `telegram_bot.py` BEFORE any message reaches `agent.sh` or `claude -p`. Hard gate, not a prompt instruction.
 - `.env`, `browser_profile/`, `logs/`, `price_history/`, `ralph.log` are gitignored.
-- Agent's bash access is scoped via `--allowedTools "Bash" "Read"` in `agent.sh` (headless mode requires explicit tool permissions; no interactive prompts).
+- Agent's bash access is scoped via `--allowedTools "Bash"` in `agent.sh` (headless mode requires explicit tool permissions; no interactive prompts).
 - Telegram messages from the user are passed to `agent.sh` as shell-quoted arguments. Never interpolated unquoted.
 - Item selection validated against regex `^\d+(x\d+)?(,\d+(x\d+)?)*$` in `telegram_bot.py` before being passed to `agent.sh`.
 - No credentials stored in code. All secrets in `.env` loaded via `python-dotenv`.
 
 ## Concurrency
 
-A lockfile (`/tmp/grocery-agent.lock`) prevents concurrent `claude -p` invocations. `agent.sh` checks for the lockfile before starting and creates it on start. It removes it on exit — including on error (via `trap`). If the lockfile exists when a new request arrives, `telegram_bot.py` sends: "A comparison is already running. Please wait."
+A lock directory (`/tmp/grocery-agent.lock`) prevents concurrent `claude -p` invocations. `agent.sh` creates the directory atomically with `mkdir` (race-free on POSIX) and writes its PID to `$LOCKDIR/pid`. On exit, the directory is removed via `trap`. If another process holds the lock, `agent.sh` checks whether the PID is still alive — if not, it reclaims the stale lock. On the Telegram side, `telegram_bot.py` pre-checks with `os.path.isdir()` before spawning the subprocess, sending "A comparison is already running. Please wait." if the lock exists.
 
 ## Logging
 

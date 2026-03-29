@@ -32,8 +32,8 @@ telegram_bot.py (long-running async process)
 ```
 grocery-agent/
 ├── src/                          # All source code
-│   ├── telegram_bot.py           # Telegram polling + command routing (async, python-telegram-bot v20)
-│   ├── agent.sh                  # Bridges Telegram to claude -p (includes lockfile)
+│   ├── telegram_bot.py           # Telegram polling + command routing (async, python-telegram-bot v22)
+│   ├── agent.sh                  # Bridges Telegram to claude -p (includes lockdir guard)
 │   ├── agent_prompt.md           # System prompt for claude -p agent
 │   ├── orchestrator.py           # Pipeline coordinator (run as: python3 src/orchestrator.py "1x2,4")
 │   ├── scraper_amazon.py         # Amazon price scraping via Playwright (sync)
@@ -54,8 +54,7 @@ grocery-agent/
 ├── REVIEW_PROMPT.md              # Ralph loop adversarial review prompt
 ├── ralph.sh                      # Ralph loop orchestrator (two-pass: implement + review)
 ├── spec.md                       # Product spec
-├── IMPLEMENTATION_PLAN.md        # Task checklist
-└── SETUP.md                      # First-time setup and browser login guide
+└── IMPLEMENTATION_PLAN.md        # Task checklist
 ```
 
 ## Build Process: Ralph Wiggum Loop
@@ -80,7 +79,7 @@ These are used during the Ralph loop build process. They are NOT used at runtime
 
 **Task subagent** (built-in Claude Code tool): Fallback when Gemini rate-limits or errors. The review pass spawns a subagent via the `Task` tool with an adversarial review prompt. Runs on the same model as the review pass (Sonnet 4.6 by default, configured via `REVIEW_MODEL` in ralph.sh).
 
-**Context7** (`npx @upstash/context7-mcp`): Used for looking up current library documentation during implementation. Helpful for python-telegram-bot v20 API, Playwright API, etc.
+**Context7** (`npx @upstash/context7-mcp`): Used for looking up current library documentation during implementation. Helpful for python-telegram-bot v22 API, Playwright API, etc.
 
 **Review pass model:** The review pass runs on Sonnet 4.6 (`--model claude-sonnet-4-6` in ralph.sh) regardless of what model the implementation pass uses. This gives a different perspective and is cheaper/faster. Configurable via `REVIEW_MODEL` in ralph.sh.
 
@@ -89,7 +88,7 @@ These MCP servers are configured at user scope (`~/.claude.json` or via `claude 
 ## Language, Dependencies, and Setup
 
 - Python 3.11+
-- `python-telegram-bot==20.7` (async, ApplicationBuilder pattern — NOT the v13 synchronous API)
+- `python-telegram-bot==22.7` (async, ApplicationBuilder pattern — NOT the v13 synchronous API)
 - `playwright==1.41.0` — sync API only in all scraper/browser files
 - `python-dotenv==1.0.1` — load `.env` at the top of every module that needs env vars
 - `pytest==7.4.4`, `pytest-asyncio==0.23.4`
@@ -157,10 +156,9 @@ Claude Code in headless mode (`claude -p`) requires explicit tool permissions. T
    }
    ```
 
-2. **`--allowedTools` flag** (for headless mode in ralph.sh and agent.sh):
-   ```
-   --allowedTools "Bash" "Read" "Write" "Edit" "MultiEdit"
-   ```
+2. **`--allowedTools` flag** (for headless mode):
+   - **ralph.sh** (build-time): `--allowedTools "Bash" "Read" "Write" "Edit" "MultiEdit"`
+   - **agent.sh** (runtime): `--allowedTools "Bash"` — the agent only needs to run `python3 src/orchestrator.py`
 
 Both are required. The settings.json covers interactive use. The `--allowedTools` flag covers `claude -p` invocations.
 
@@ -169,7 +167,7 @@ Both are required. The settings.json covers interactive use. The `--allowedTools
 - Amazon and Blinkit page layouts change without warning. If a selector breaks, update only the selector expression, not the surrounding extraction logic.
 - Blinkit shows a location modal and an app-install banner on most page loads. `dismiss_modals()` must be called before any search interaction.
 - Amazon shows different prices for Prime vs non-Prime. The agent must run within a logged-in Prime session. If prices look wrong, check that the session is valid.
-- `python-telegram-bot` v20 is fully async. All handlers must be `async def`. Do not mix sync and async patterns in `telegram_bot.py`.
+- `python-telegram-bot` v20+ (currently v22.7) is fully async. All handlers must be `async def`. Do not mix sync and async patterns in `telegram_bot.py`.
 - Telegram messages have a 4096 character limit. Always call `formatter.split_message()` before sending. Do not assume the output will be short. With 15+ items, the comparison table alone can exceed 4096 chars.
 - Master list IDs are never reused after deletion. Always compute next id as `max(existing_ids) + 1`, not `len(list) + 1`.
 - `playwright install chromium` must be run after every fresh `pip install playwright`. The package alone does not include the browser binary.
@@ -192,6 +190,11 @@ Both are required. The settings.json covers interactive use. The `--allowedTools
 - Amazon's `_check_session_expired` checks URL for "signin", "login", or "auth" keywords. Blinkit uses the same approach.
 - `dismiss_modals()` on Blinkit includes a keyboard Escape press as a catch-all after trying all close-button selectors.
 - Quantity tokens (e.g., 500g, 1kg, 4l) in queries are mandatory match criteria — candidates without a matching quantity token are filtered out before scoring. Unit aliases are normalized (ltr/litre/liter → l, piece/pieces → pcs) so "4 ltr" matches "4 L". The candidate's `unit` field is also checked, since Blinkit sometimes stores size info outside the product name.
+- Both scrapers share a duck-typing interface: `set_location(page, pincode)`, `dismiss_modals(page)`, `search_items(page, query)`, `extract_results(page)`, `discover_fees(page)`. The orchestrator calls these generically via `scraper.fn(page, ...)`. Amazon's `dismiss_modals` is a no-op; Blinkit's dismisses banners/modals and presses Escape.
+- The concurrency lock uses atomic `mkdir` (a directory, not a file) for race-free creation, with PID tracking (`$LOCKDIR/pid`) for stale lock recovery. `telegram_bot.py` pre-checks with `os.path.isdir()` before spawning the subprocess.
+- The orchestrator enforces a daily run limit of 3 comparisons as a safety throttle against excessive automated requests. Count is determined by checking existing `run_YYYYMMDD_*.json` log files for the current date.
+- Anti-bot-detection: the orchestrator adds random delays between item searches (2-5s) and between platform switches (3-8s) to reduce detection risk.
+- `agent.sh` auto-detects the timeout command: uses `gtimeout` (macOS/Homebrew coreutils) if available, falls back to `timeout`, or runs without a timeout if neither is found.
 
 ## E2E Test Notes
 
