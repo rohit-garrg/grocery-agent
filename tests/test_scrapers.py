@@ -7,14 +7,14 @@ import pytest
 from src.browser_manager import get_browser_context, close_context
 from src.match_utils import find_best_match
 from src.scraper_amazon import (
-    set_location, search_items, extract_results, discover_fees_amazon,
+    set_location, search_items, extract_results, discover_fees,
 )
 from src.scraper_blinkit import (
     set_location as blinkit_set_location,
     dismiss_modals as blinkit_dismiss_modals,
     search_items as blinkit_search_items,
     extract_results as blinkit_extract_results,
-    discover_fees_blinkit,
+    discover_fees as blinkit_discover_fees,
 )
 
 
@@ -94,7 +94,7 @@ class TestAmazonFeeDiscovery:
         """Fee discovery returns a dict with the expected keys."""
         set_location(page, "122001")
         search_items(page, "toor dal 1 kg")
-        fees = discover_fees_amazon(page)
+        fees = discover_fees(page)
         assert "status" not in fees  # Should not be session_expired
         assert "delivery_fee" in fees
         assert "handling_fee" in fees
@@ -109,7 +109,7 @@ class TestAmazonSessionExpiry:
     def test_session_expiry_detection(self, page):
         """If navigated to a signin page, session expiry should be detected."""
         page.goto("https://www.amazon.in/ap/signin", wait_until="domcontentloaded", timeout=30000)
-        fees = discover_fees_amazon(page)
+        fees = discover_fees(page)
         assert fees.get("status") == "session_expired"
 
 
@@ -172,7 +172,7 @@ class TestBlinkitFeeDiscovery:
         """Fee discovery returns a dict with the expected keys."""
         blinkit_set_location(page, "122001")
         blinkit_search_items(page, "toor dal 1 kg")
-        fees = discover_fees_blinkit(page)
+        fees = blinkit_discover_fees(page)
         assert "status" not in fees  # Should not be session_expired
         assert "delivery_fee" in fees
         assert "handling_fee" in fees
@@ -186,7 +186,7 @@ class TestBlinkitSessionExpiry:
     def test_session_expiry_detection(self, page):
         """If navigated to a login page, session expiry should be detected."""
         page.goto("https://blinkit.com/login", wait_until="domcontentloaded", timeout=30000)
-        fees = discover_fees_blinkit(page)
+        fees = blinkit_discover_fees(page)
         assert fees.get("status") == "session_expired"
 
 

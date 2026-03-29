@@ -210,7 +210,7 @@ def _extract_brand(card):
     return ""
 
 
-def discover_fees_amazon(page):
+def discover_fees(page):
     """Read delivery fee and cashback information from the current Amazon page.
 
     Returns fee dict with keys: delivery_fee, handling_fee, free_delivery_threshold, cashback_tiers.

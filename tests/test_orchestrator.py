@@ -70,7 +70,7 @@ def _mock_dismiss_modals(page):
     pass
 
 
-def _mock_discover_fees_amazon(page):
+def _mock_amazon_fees(page):
     return {
         "delivery_fee": 40,
         "handling_fee": 0,
@@ -79,7 +79,7 @@ def _mock_discover_fees_amazon(page):
     }
 
 
-def _mock_discover_fees_blinkit(page):
+def _mock_blinkit_fees(page):
     return {
         "delivery_fee": 25,
         "handling_fee": 9,
@@ -125,6 +125,7 @@ def setup_env(tmp_path, monkeypatch):
     monkeypatch.setattr("orchestrator.MASTER_LIST_PATH", ml_path)
     monkeypatch.setattr("orchestrator.BROWSER_PROFILE_PATH", profile_path)
     monkeypatch.setattr("orchestrator.LOG_DIR", str(tmp_path / "logs"))
+    monkeypatch.setattr("orchestrator.PRICE_HISTORY_DIR", str(tmp_path / "price_history"))
     monkeypatch.setattr("orchestrator.PINCODE", "122001")
 
     # Patch time.sleep to skip delays in tests
@@ -150,14 +151,14 @@ def mock_scrapers_success(monkeypatch):
     monkeypatch.setattr("orchestrator.scraper_amazon.set_location", _mock_set_location)
     monkeypatch.setattr("orchestrator.scraper_amazon.search_items", _mock_amazon_search)
     monkeypatch.setattr("orchestrator.scraper_amazon.extract_results", _mock_amazon_extract)
-    monkeypatch.setattr("orchestrator.scraper_amazon.discover_fees_amazon", _mock_discover_fees_amazon)
+    monkeypatch.setattr("orchestrator.scraper_amazon.discover_fees", _mock_amazon_fees)
 
     # Blinkit
     monkeypatch.setattr("orchestrator.scraper_blinkit.set_location", _mock_set_location)
     monkeypatch.setattr("orchestrator.scraper_blinkit.dismiss_modals", _mock_dismiss_modals)
     monkeypatch.setattr("orchestrator.scraper_blinkit.search_items", _mock_blinkit_search)
     monkeypatch.setattr("orchestrator.scraper_blinkit.extract_results", _mock_blinkit_extract)
-    monkeypatch.setattr("orchestrator.scraper_blinkit.discover_fees_blinkit", _mock_discover_fees_blinkit)
+    monkeypatch.setattr("orchestrator.scraper_blinkit.discover_fees", _mock_blinkit_fees)
 
 
 # ---------------------------------------------------------------------------
@@ -198,13 +199,13 @@ class TestSinglePlatformFailure:
         monkeypatch.setattr("orchestrator.scraper_amazon.set_location", amazon_set_location_expired)
         monkeypatch.setattr("orchestrator.scraper_amazon.search_items", _mock_amazon_search)
         monkeypatch.setattr("orchestrator.scraper_amazon.extract_results", _mock_amazon_extract)
-        monkeypatch.setattr("orchestrator.scraper_amazon.discover_fees_amazon", _mock_discover_fees_amazon)
+        monkeypatch.setattr("orchestrator.scraper_amazon.discover_fees", _mock_amazon_fees)
 
         monkeypatch.setattr("orchestrator.scraper_blinkit.set_location", _mock_set_location)
         monkeypatch.setattr("orchestrator.scraper_blinkit.dismiss_modals", _mock_dismiss_modals)
         monkeypatch.setattr("orchestrator.scraper_blinkit.search_items", _mock_blinkit_search)
         monkeypatch.setattr("orchestrator.scraper_blinkit.extract_results", _mock_blinkit_extract)
-        monkeypatch.setattr("orchestrator.scraper_blinkit.discover_fees_blinkit", _mock_discover_fees_blinkit)
+        monkeypatch.setattr("orchestrator.scraper_blinkit.discover_fees", _mock_blinkit_fees)
 
         output, exit_code = run_comparison("1,2")
         assert exit_code == 0
@@ -220,13 +221,13 @@ class TestSinglePlatformFailure:
         monkeypatch.setattr("orchestrator.scraper_amazon.set_location", _mock_set_location)
         monkeypatch.setattr("orchestrator.scraper_amazon.search_items", _mock_amazon_search)
         monkeypatch.setattr("orchestrator.scraper_amazon.extract_results", _mock_amazon_extract)
-        monkeypatch.setattr("orchestrator.scraper_amazon.discover_fees_amazon", _mock_discover_fees_amazon)
+        monkeypatch.setattr("orchestrator.scraper_amazon.discover_fees", _mock_amazon_fees)
 
         monkeypatch.setattr("orchestrator.scraper_blinkit.set_location", blinkit_set_location_expired)
         monkeypatch.setattr("orchestrator.scraper_blinkit.dismiss_modals", _mock_dismiss_modals)
         monkeypatch.setattr("orchestrator.scraper_blinkit.search_items", _mock_blinkit_search)
         monkeypatch.setattr("orchestrator.scraper_blinkit.extract_results", _mock_blinkit_extract)
-        monkeypatch.setattr("orchestrator.scraper_blinkit.discover_fees_blinkit", _mock_discover_fees_blinkit)
+        monkeypatch.setattr("orchestrator.scraper_blinkit.discover_fees", _mock_blinkit_fees)
 
         output, exit_code = run_comparison("1,2,3")
         assert exit_code == 0
@@ -247,13 +248,13 @@ class TestBothPlatformsFailed:
         monkeypatch.setattr("orchestrator.scraper_amazon.set_location", amazon_expired)
         monkeypatch.setattr("orchestrator.scraper_amazon.search_items", _mock_amazon_search)
         monkeypatch.setattr("orchestrator.scraper_amazon.extract_results", _mock_amazon_extract)
-        monkeypatch.setattr("orchestrator.scraper_amazon.discover_fees_amazon", _mock_discover_fees_amazon)
+        monkeypatch.setattr("orchestrator.scraper_amazon.discover_fees", _mock_amazon_fees)
 
         monkeypatch.setattr("orchestrator.scraper_blinkit.set_location", blinkit_expired)
         monkeypatch.setattr("orchestrator.scraper_blinkit.dismiss_modals", _mock_dismiss_modals)
         monkeypatch.setattr("orchestrator.scraper_blinkit.search_items", _mock_blinkit_search)
         monkeypatch.setattr("orchestrator.scraper_blinkit.extract_results", _mock_blinkit_extract)
-        monkeypatch.setattr("orchestrator.scraper_blinkit.discover_fees_blinkit", _mock_discover_fees_blinkit)
+        monkeypatch.setattr("orchestrator.scraper_blinkit.discover_fees", _mock_blinkit_fees)
 
         output, exit_code = run_comparison("1,2")
         assert exit_code == 1
@@ -276,13 +277,13 @@ class TestBothPlatformsFailed:
         monkeypatch.setattr("orchestrator.scraper_amazon.set_location", _mock_set_location)
         monkeypatch.setattr("orchestrator.scraper_amazon.search_items", amazon_fail)
         monkeypatch.setattr("orchestrator.scraper_amazon.extract_results", _mock_amazon_extract)
-        monkeypatch.setattr("orchestrator.scraper_amazon.discover_fees_amazon", _mock_discover_fees_amazon)
+        monkeypatch.setattr("orchestrator.scraper_amazon.discover_fees", _mock_amazon_fees)
 
         monkeypatch.setattr("orchestrator.scraper_blinkit.set_location", _mock_set_location)
         monkeypatch.setattr("orchestrator.scraper_blinkit.dismiss_modals", _mock_dismiss_modals)
         monkeypatch.setattr("orchestrator.scraper_blinkit.search_items", blinkit_fail)
         monkeypatch.setattr("orchestrator.scraper_blinkit.extract_results", _mock_blinkit_extract)
-        monkeypatch.setattr("orchestrator.scraper_blinkit.discover_fees_blinkit", _mock_discover_fees_blinkit)
+        monkeypatch.setattr("orchestrator.scraper_blinkit.discover_fees", _mock_blinkit_fees)
 
         output, exit_code = run_comparison("1,2,3")
         assert exit_code == 1
@@ -302,13 +303,13 @@ class TestConsecutiveFailures:
         monkeypatch.setattr("orchestrator.scraper_amazon.set_location", _mock_set_location)
         monkeypatch.setattr("orchestrator.scraper_amazon.search_items", amazon_always_fail)
         monkeypatch.setattr("orchestrator.scraper_amazon.extract_results", _mock_amazon_extract)
-        monkeypatch.setattr("orchestrator.scraper_amazon.discover_fees_amazon", _mock_discover_fees_amazon)
+        monkeypatch.setattr("orchestrator.scraper_amazon.discover_fees", _mock_amazon_fees)
 
         monkeypatch.setattr("orchestrator.scraper_blinkit.set_location", _mock_set_location)
         monkeypatch.setattr("orchestrator.scraper_blinkit.dismiss_modals", _mock_dismiss_modals)
         monkeypatch.setattr("orchestrator.scraper_blinkit.search_items", _mock_blinkit_search)
         monkeypatch.setattr("orchestrator.scraper_blinkit.extract_results", _mock_blinkit_extract)
-        monkeypatch.setattr("orchestrator.scraper_blinkit.discover_fees_blinkit", _mock_discover_fees_blinkit)
+        monkeypatch.setattr("orchestrator.scraper_blinkit.discover_fees", _mock_blinkit_fees)
 
         # 3 items selected — Amazon should fail on 2 items (with retries) and stop trying the 3rd
         output, exit_code = run_comparison("1,2,3")
@@ -353,12 +354,12 @@ class TestLoggingCalled:
         monkeypatch.setattr("orchestrator.scraper_amazon.set_location", expired)
         monkeypatch.setattr("orchestrator.scraper_amazon.search_items", lambda p, q: None)
         monkeypatch.setattr("orchestrator.scraper_amazon.extract_results", lambda p: [])
-        monkeypatch.setattr("orchestrator.scraper_amazon.discover_fees_amazon", lambda p: {})
+        monkeypatch.setattr("orchestrator.scraper_amazon.discover_fees", lambda p: {})
         monkeypatch.setattr("orchestrator.scraper_blinkit.set_location", expired)
         monkeypatch.setattr("orchestrator.scraper_blinkit.dismiss_modals", lambda p: None)
         monkeypatch.setattr("orchestrator.scraper_blinkit.search_items", lambda p, q: None)
         monkeypatch.setattr("orchestrator.scraper_blinkit.extract_results", lambda p: [])
-        monkeypatch.setattr("orchestrator.scraper_blinkit.discover_fees_blinkit", lambda p: {})
+        monkeypatch.setattr("orchestrator.scraper_blinkit.discover_fees", lambda p: {})
 
         import logger as logger_mod
         original_log_run = logger_mod.log_run
@@ -382,12 +383,12 @@ class TestLoggingCalled:
         monkeypatch.setattr("orchestrator.scraper_amazon.set_location", amazon_expired)
         monkeypatch.setattr("orchestrator.scraper_amazon.search_items", lambda p, q: None)
         monkeypatch.setattr("orchestrator.scraper_amazon.extract_results", lambda p: [])
-        monkeypatch.setattr("orchestrator.scraper_amazon.discover_fees_amazon", lambda p: {})
+        monkeypatch.setattr("orchestrator.scraper_amazon.discover_fees", lambda p: {})
         monkeypatch.setattr("orchestrator.scraper_blinkit.set_location", lambda p, pin: True)
         monkeypatch.setattr("orchestrator.scraper_blinkit.dismiss_modals", lambda p: None)
         monkeypatch.setattr("orchestrator.scraper_blinkit.search_items", _mock_blinkit_search)
         monkeypatch.setattr("orchestrator.scraper_blinkit.extract_results", _mock_blinkit_extract)
-        monkeypatch.setattr("orchestrator.scraper_blinkit.discover_fees_blinkit", _mock_discover_fees_blinkit)
+        monkeypatch.setattr("orchestrator.scraper_blinkit.discover_fees", _mock_blinkit_fees)
 
         import logger as logger_mod
         original_log_run = logger_mod.log_run
@@ -472,13 +473,13 @@ class TestRetryInPipeline:
         monkeypatch.setattr("orchestrator.scraper_amazon.set_location", _mock_set_location)
         monkeypatch.setattr("orchestrator.scraper_amazon.search_items", amazon_search_fail_once)
         monkeypatch.setattr("orchestrator.scraper_amazon.extract_results", _mock_amazon_extract)
-        monkeypatch.setattr("orchestrator.scraper_amazon.discover_fees_amazon", _mock_discover_fees_amazon)
+        monkeypatch.setattr("orchestrator.scraper_amazon.discover_fees", _mock_amazon_fees)
 
         monkeypatch.setattr("orchestrator.scraper_blinkit.set_location", _mock_set_location)
         monkeypatch.setattr("orchestrator.scraper_blinkit.dismiss_modals", _mock_dismiss_modals)
         monkeypatch.setattr("orchestrator.scraper_blinkit.search_items", _mock_blinkit_search)
         monkeypatch.setattr("orchestrator.scraper_blinkit.extract_results", _mock_blinkit_extract)
-        monkeypatch.setattr("orchestrator.scraper_blinkit.discover_fees_blinkit", _mock_discover_fees_blinkit)
+        monkeypatch.setattr("orchestrator.scraper_blinkit.discover_fees", _mock_blinkit_fees)
 
         output, exit_code = run_comparison("1")
         assert exit_code == 0
@@ -501,13 +502,13 @@ class TestRetryInPipeline:
         monkeypatch.setattr("orchestrator.scraper_amazon.set_location", set_loc_fail_once)
         monkeypatch.setattr("orchestrator.scraper_amazon.search_items", _mock_amazon_search)
         monkeypatch.setattr("orchestrator.scraper_amazon.extract_results", _mock_amazon_extract)
-        monkeypatch.setattr("orchestrator.scraper_amazon.discover_fees_amazon", _mock_discover_fees_amazon)
+        monkeypatch.setattr("orchestrator.scraper_amazon.discover_fees", _mock_amazon_fees)
 
         monkeypatch.setattr("orchestrator.scraper_blinkit.set_location", _mock_set_location)
         monkeypatch.setattr("orchestrator.scraper_blinkit.dismiss_modals", _mock_dismiss_modals)
         monkeypatch.setattr("orchestrator.scraper_blinkit.search_items", _mock_blinkit_search)
         monkeypatch.setattr("orchestrator.scraper_blinkit.extract_results", _mock_blinkit_extract)
-        monkeypatch.setattr("orchestrator.scraper_blinkit.discover_fees_blinkit", _mock_discover_fees_blinkit)
+        monkeypatch.setattr("orchestrator.scraper_blinkit.discover_fees", _mock_blinkit_fees)
 
         output, exit_code = run_comparison("1,2")
         assert exit_code == 0
@@ -526,13 +527,13 @@ class TestRetryInPipeline:
         monkeypatch.setattr("orchestrator.scraper_amazon.set_location", amazon_expired)
         monkeypatch.setattr("orchestrator.scraper_amazon.search_items", _mock_amazon_search)
         monkeypatch.setattr("orchestrator.scraper_amazon.extract_results", _mock_amazon_extract)
-        monkeypatch.setattr("orchestrator.scraper_amazon.discover_fees_amazon", _mock_discover_fees_amazon)
+        monkeypatch.setattr("orchestrator.scraper_amazon.discover_fees", _mock_amazon_fees)
 
         monkeypatch.setattr("orchestrator.scraper_blinkit.set_location", _mock_set_location)
         monkeypatch.setattr("orchestrator.scraper_blinkit.dismiss_modals", _mock_dismiss_modals)
         monkeypatch.setattr("orchestrator.scraper_blinkit.search_items", _mock_blinkit_search)
         monkeypatch.setattr("orchestrator.scraper_blinkit.extract_results", _mock_blinkit_extract)
-        monkeypatch.setattr("orchestrator.scraper_blinkit.discover_fees_blinkit", _mock_discover_fees_blinkit)
+        monkeypatch.setattr("orchestrator.scraper_blinkit.discover_fees", _mock_blinkit_fees)
 
         output, exit_code = run_comparison("1,2")
         assert exit_code == 0

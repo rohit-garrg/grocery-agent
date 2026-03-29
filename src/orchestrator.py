@@ -129,10 +129,7 @@ def _scrape_platform(platform, page, items, pincode):
 
     # Discover fees (with retry)
     try:
-        if platform == "amazon":
-            discovered = _retry(scraper_amazon.discover_fees_amazon, page)
-        else:
-            discovered = _retry(scraper_blinkit.discover_fees_blinkit, page)
+        discovered = _retry(scraper.discover_fees, page)
 
         if isinstance(discovered, dict) and discovered.get("status") == "session_expired":
             return prices, {"status": "session_expired", "platform": platform}, errors

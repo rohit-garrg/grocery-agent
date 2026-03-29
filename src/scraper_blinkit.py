@@ -321,7 +321,7 @@ def _extract_brand(card, product_name):
     return product_name
 
 
-def discover_fees_blinkit(page):
+def discover_fees(page):
     """Read delivery fee and handling charge information from Blinkit.
 
     Reads fee info from banners on the current page, then always also
