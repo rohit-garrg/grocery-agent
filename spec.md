@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A Telegram-connected agent that compares grocery prices across Amazon (with Prime) and Blinkit for a user in Gurugram 122001. The user selects items from a stored master list, the agent fetches current prices from both platforms using a headless browser, calculates the optimal cart split factoring in delivery fees and order thresholds, and returns the recommendation via Telegram.
+A Telegram-connected agent that compares grocery prices across Amazon (with Prime) and Blinkit for any Indian delivery pincode. The user selects items from a stored master list, the agent fetches current prices from both platforms using a headless browser, calculates the optimal cart split factoring in delivery fees and order thresholds, and returns the recommendation via Telegram.
 
 ## Architecture Overview
 
@@ -22,7 +22,7 @@ The agent runs via `claude -p` (Claude Code headless mode) on a Max plan. **Brow
 - Free delivery above ₹99 for Prime users. Zero platform fees.
 - Cashback tiers exist (e.g., ₹50 back above ₹399, ₹100 back above ₹749). These are promotional and change. The scraper reads whatever cashback/offer banners are visible on the **search results page or category page** — not by navigating to cart. If no offers are visible, fee structure defaults to: delivery free above ₹99, no cashback tiers.
 - Prices may differ for Prime vs non-Prime. The agent must operate within a logged-in Prime session.
-- Location must be set to Gurugram 122001. Amazon uses address selection, not just pincode.
+- Location must be set to the user's delivery address (matching the `PINCODE` env var). Amazon uses address selection, not just pincode.
 
 **Fee discovery for Amazon:** After searching items, read the delivery badge text from product listing cards (e.g., "FREE delivery on orders over ₹99"). Read any visible cashback banners on the page. Do NOT navigate to the cart to discover fees.
 
@@ -31,7 +31,7 @@ The agent runs via `claude -p` (Claude Code headless mode) on a Max plan. **Brow
 - User does NOT have Blinkit Plus.
 - Delivery fees and handling charges vary by order value. The scraper reads the current fee thresholds from the **delivery info widget or banner** visible on the search/category page (e.g., "Free delivery above ₹199" or "₹25 delivery fee").
 - After reading fees from the current page, also navigate to the empty cart page and read any fee structure text displayed there (the cart page is the most authoritative source). Do NOT add items to the cart for fee discovery. If no fee info is found on either the search page or the cart page, use defaults: ₹25 delivery, ₹9 handling, free delivery above ₹199, no cashback.
-- Location must be set to pincode 122001. Blinkit typically prompts for location on first visit or when location isn't set.
+- Location must be set to the configured `PINCODE`. Blinkit typically prompts for location on first visit or when location isn't set.
 - May show app-install prompts or location modals that need dismissing before searching.
 
 ### Platform availability handling
@@ -110,7 +110,7 @@ Example: 1x2,4,5,8,12
 1. Parses the selection string, loads `master_list.json`, resolves item names and quantities.
 2. Opens a Playwright persistent browser context from `BROWSER_PROFILE_PATH`.
 3. For each platform (Amazon, then Blinkit), in sequence:
-   a. Verify location is set to 122001. If not, set it.
+   a. Verify location is set to the configured `PINCODE`. If not, set it.
    b. Dismiss any modals or banners (Blinkit).
    c. For each selected item: search, extract candidate results (all reasonable matches), pass to `find_best_match()`.
    d. Read fee structure from the page (see fee discovery rules per platform above).
@@ -287,7 +287,7 @@ grocery-agent/
 TELEGRAM_TOKEN=         # Bot token from @BotFather
 ALLOWED_USER_ID=        # Your Telegram user ID (integer)
 BROWSER_PROFILE_PATH=   # Absolute path to Playwright persistent browser context directory
-PINCODE=122001          # Delivery pincode
+PINCODE=                # Your delivery pincode
 ```
 
 ## Security
@@ -338,7 +338,7 @@ For unavailable items: `price` is `null`, `brand` is `null`, `status` field is s
 - No card-specific discount optimization.
 - No automated checkout or cart addition. (Navigating to an empty cart page to read fee banners is allowed; adding items to cart is not.)
 - No price alerts ("tell me when X drops below ₹Y").
-- No multi-address support. Single address: pincode 122001.
+- No multi-address support. Single address per configured `PINCODE`.
 - No scheduled/cron comparisons. On-demand via Telegram only.
 - No web UI. Telegram only.
 - No LLM-based product matching. Heuristic only in v1.

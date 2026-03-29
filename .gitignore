@@ -1,4 +1,5 @@
 .env
+.claude/settings.local.json
 browser_profile/
 logs/
 price_history/
