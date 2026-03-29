@@ -19,7 +19,7 @@ from master_list_manager import load_list
 from browser_manager import get_browser_context, close_context
 from match_utils import find_best_match
 from optimizer import optimize_cart
-from formatter import format_comparison, format_unavailable, split_message
+from formatter import format_comparison, format_unavailable
 
 import scraper_amazon
 import scraper_blinkit
@@ -330,9 +330,7 @@ def run_comparison(selection_string):
             return "No items could be found on any platform.", 1
 
         # Step 7: Format output
-        # item_details for formatter includes all items (optimizer items)
-        item_details = optimizer_items
-        output = format_comparison(result, item_details)
+        output = format_comparison(result, optimizer_items)
 
         if unavailable_items:
             unavail_text = format_unavailable(unavailable_items)
@@ -342,17 +340,14 @@ def run_comparison(selection_string):
         if session_warnings:
             output = output + "\n\n" + "\n".join(session_warnings)
 
-        # Step 8: Split for Telegram and output
-        messages = split_message(output)
-
-        # Step 9: Logging
+        # Step 8: Logging
         _log_all(selection, selected_items, platform_results, platform_fees,
                  expired_platforms, result, start_time)
 
-        return "\n---\n".join(messages), 0
+        return output, 0
 
     finally:
-        # Step 10: Close browser
+        # Step 9: Close browser
         close_context(context, pw)
 
 
