@@ -145,4 +145,4 @@ User's item selection: ${SELECTION}" \
 
 - [x] **E-SIMPLIFY: Final code health pass.** Review the entire `src/` directory. Final simplification pass before project is considered complete. See PROMPT.md "SIMPLIFY tasks" rules.
 
-- [ ] **E-SYNC-DOCS: Final documentation sync.** Comprehensive sync of all docs. Ensure SETUP.md, spec.md, CLAUDE.md all reflect the finished project. See PROMPT.md "SYNC-DOCS tasks" rules.
+- [x] **E-SYNC-DOCS: Final documentation sync.** Comprehensive sync of all docs. Ensure SETUP.md, spec.md, CLAUDE.md all reflect the finished project. See PROMPT.md "SYNC-DOCS tasks" rules.
